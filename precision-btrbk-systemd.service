@@ -1,0 +1,7 @@
+[Unit]
+Description=btrbk backup
+Documentation=man:btrbk(1)
+
+[Service]
+Type=oneshot
+ExecStart=/home/wmutschl/scripts/btrfs-btrbk.sh

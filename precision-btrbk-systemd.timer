@@ -1,0 +1,10 @@
+[Unit]
+Description=btrbk hourly backup
+
+[Timer]
+OnCalendar=hourly
+AccuracySec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
