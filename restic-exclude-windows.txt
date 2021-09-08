@@ -1,0 +1,59 @@
+C:/$$Recycle.Bin/**
+C:/$$WinREAgent/**
+C:/adobeTemp/**
+C:/Aomei/**
+C:/Config.Msi/**
+C:/Intel/**
+C:/OneDriveTemp/**
+C:/PerfLogs/**
+C:/ProgramData/**
+C:/Program Files/**
+C:/Program Files (x86)/**
+C:/Recovery/**
+C:/System Volume Information/**
+C:/Windows/**
+AMTAG.BIN
+bootTel.dat
+DumpStack.log.tmp
+hiberfil.sys
+pagefile.sys
+swapfile.sys
+SYSTAG.BIN
+desktop.ini
+NTUSER.DAT*
+ntuser.dat.LOG*
+ntuser.ini
+
+C:/Users/Default/**
+C:/Users/defaultuser100000/**
+C:/Users/Public/**
+
+C:/Users/micro/AppData/Local/**
+C:/Users/micro/AppData/LocalLow/**
+C:/Users/micro/AppData/Roaming/**
+C:/Users/micro/.android/**
+C:/Users/micro/.config/**
+C:/Users/micro/3D Objects/**
+C:/Users/micro/Favorites/**
+C:/Users/micro/Saved Games/**
+C:/Users/micro/IntelGraphicsProfiles/**
+C:/Users/micro/Contacts/**
+C:/Users/micro/Links/**
+C:/Users/micro/MicrosoftEdgeBackups/**
+C:/Users/micro/OneDrive/**
+C:/Users/micro/scoop/**
+C:/Users/micro/Searches/**
+
+C:/Users/andre/AppData/Local/**
+C:/Users/andre/AppData/LocalLow/**
+C:/Users/andre/AppData/Roaming/**
+C:/Users/andre/3D Objects/**
+C:/Users/andre/Favorites/**
+C:/Users/andre/Saved Games/**
+C:/Users/andre/IntelGraphicsProfiles/**
+C:/Users/andre/Contacts/**
+C:/Users/andre/Links/**
+C:/Users/andre/MicrosoftEdgeBackups/**
+C:/Users/andre/OneDrive/**
+C:/Users/andre/scoop/**
+C:/Users/andre/Searches/**

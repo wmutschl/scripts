@@ -1,0 +1,100 @@
+version: "3"
+
+networks:
+  nextcloud_network:
+  gitea_network:
+    external: false
+
+services:
+  swag:
+    image: ghcr.io/linuxserver/swag
+    container_name: swag
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TIMEZONE}
+      - URL=${URL}
+      - VALIDATION=http
+      - EMAIL=${EMAIL}
+      - ONLY_SUBDOMAINS=false
+      - EXTRA_DOMAINS=www.${URL},${GITEA_DOMAIN},${NEXTCLOUD_DOMAIN}
+      - CERTPROVIDER=letsencrypt
+    volumes:
+      - ${SWAG_ROOT}:/config
+    ports:
+      - 443:443
+      - 80:80
+    restart: unless-stopped
+    networks:
+      - nextcloud_network
+      - gitea_network
+
+  gitea:
+    image: gitea/gitea:latest
+    container_name: gitea
+    environment:
+      - USER_UID=1000
+      - USER_GID=1000
+      - DOMAIN=${GITEA_DOMAIN}
+      - RUN_MODE=prod
+      - LFS_START_SERVER=true
+    restart: unless-stopped
+    volumes:
+      - ${GITEA_ROOT}:/data
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    networks:
+      - gitea_network
+
+  nextcloud:
+    image: nextcloud:apache
+    container_name: nextcloud
+    volumes:
+      - ${NEXTCLOUD_ROOT}/html:/var/www/html
+      - ${NEXTCLOUD_ROOT}/data:/srv/nextcloud/data
+      - ${NEXTCLOUD_ROOT}/apps:/var/www/html/custom_apps
+      - ${NEXTCLOUD_ROOT}/config:/var/www/html/config
+    extra_hosts:
+      - "${NEXTCLOUD_DOMAIN}:${IPADDRESS}"
+    depends_on:
+      - mariadb
+      - redis
+    environment:
+      - NEXTCLOUD_TRUSTED_DOMAINS='${NEXTCLOUD_DOMAIN}'
+      - NEXTCLOUD_DATA_DIR=/srv/nextcloud/data
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_HOST=${MYSQL_HOST}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_HOST_PASSWORD=${REDIS_PASSWORD}
+      - TZ=${TIMEZONE}
+    restart: unless-stopped
+    networks:
+      - nextcloud_network
+
+  mariadb:
+    image: mariadb
+    container_name: nextcloud-mariadb
+    command: --log-bin=mysqld-bin --transaction-isolation=READ-COMMITTED --binlog-format=ROW --innodb_read_only_compressed=OFF
+    restart: unless-stopped
+    volumes:
+      - ${NEXTCLOUD_ROOT}/mariadb:/var/lib/mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - MYSQL_USER=${MYSQL_USER}
+      - TZ=${TIMEZONE}
+    networks:
+      - nextcloud_network
+
+  redis:
+    image: redis
+    container_name: nextcloud-redis
+    command: redis-server --requirepass ${REDIS_PASSWORD}
+    restart: unless-stopped
+    networks:
+      - nextcloud_network
