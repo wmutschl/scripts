@@ -11,52 +11,38 @@ sudo crontab xyz-crontab.txt
 ```
 Note to adjust the healthchecks.io ping address.
 
-## Systemd timers for btrbk on Precision laptop (WIP)
-First install btrbk
-```sh
-git clone https://github.com/digint/btrbk.git
-cd btrbk
-sudo make install
-```
+## Systemd timers for btrbk
+For machines that don't run constantly I use a systemd timer for `btrbk` instead of `cron`:
 
-Then let's copy our script
 ```
-sudo cp /home/wmutschl/scripts/btrfs-btrbk.sh /usr/bin/btrfs-btrbk.sh
-sudo chmod --reference /usr/bin/btrbk /usr/bin/btrfs-btrbk.sudo nano /lib/systemd/system/btrbk.service
+sudo cp $HOME/scripts/btrfs-btrbk-systemd.timer /lib/systemd/system/btrfs-btrbk-systemd.timer
+sudo cp $HOME/scripts/btrfs-btrbk-systemd.service /lib/systemd/system/btrfs-btrbk-systemd.service
+sudo chmod 644 /lib/systemd/system/btrfs-btrbk-systemd.timer
+sudo chmod 644 /lib/systemd/system/btrfs-btrbk-systemd.service
+mkdir -p $HOME/logs
 ```
-The systemd service:
+Now let's test it first:
 ```
-# [Unit]
-# Description=btrbk backup
-# Documentation=man:btrbk(1)
-
-# [Service]
-# Type=oneshot
-# ExecStart=/usr/bin/btrfs-btrbk.sh
+sudo systemctl start btrfs-btrbk-systemd.service
+sudo systemctl status btrfs-btrbk-systemd.service
+cat /var/log/btrbk.log
+cat $HOME/logs/btrfs-btrbk.log
 ```
-
-the systemd timer
+Check if snapshots are created and if any errors occured. If all is well, then enable the timer:
 ```
-# [Unit]
-# Description=btrbk hourly backup
-# 
-# [Timer]
-# OnCalendar=hourly
-# AccuracySec=10min
-# Persistent=true
-# 
-# [Install]
-# WantedBy=timers.target
-```
-
-Now enable, start and reload:
-```
-sudo systemctl start btrbk.service #check if error
-sudo systemctl enable btrbk.timer
-sudo systemctl start btrbk.timer
+sudo systemctl enable btrfs-btrbk-systemd.timer
+sudo systemctl start btrfs-btrbk-systemd.timer
 sudo systemctl daemon-reload
-
 sudo systemctl list-timers --all
-#NEXT                         LEFT          LAST                         PASSED     UNIT                         ACTIVATES                     
-#Thu 2021-05-20 11:00:00 CEST 29min left    Thu 2021-05-20 10:09:19 CEST 20min ago  btrbk.timer                  btrbk.service
 ```
+You should see the timer enabled:
+```
+NEXT                         LEFT           LAST                         PASSED             UNIT                      >
+Fri 2021-09-10 10:00:00 CEST 36min left     n/a                          n/a                btrfs-btrbk-systemd.timer >
+```
+Recheck the houerly timer after an hour to make sure everything is working:
+```
+sudo systemctl list-timers --all
+cat /var/log/btrbk.log
+cat $HOME/logs/btrfs-btrbk.log
+``` 
