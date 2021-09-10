@@ -1,5 +1,5 @@
 [Unit]
-Description=btrbk hourly backup
+Description=btrfs-btrbk hourly backup
 
 [Timer]
 OnCalendar=hourly
