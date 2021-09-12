@@ -5,10 +5,10 @@
 @hourly     /home/wmutschl/scripts/btrfs-btrbk.sh           >> /home/wmutschl/logs/btrfs-btrbk.log           2>&1
 
 # BTRFS maintenance: balance
-@weekly     /home/wmutschl/scripts/btrfs-balance.sh         >> /home/wmutschl/logs/btrfs-balance.log         2>&1
+15 3 * * SUN   /home/wmutschl/scripts/btrfs-balance.sh         >> /home/wmutschl/logs/btrfs-balance.log         2>&1
 
 # BTRFS maintenance: scrub
-@monthly    /home/wmutschl/scripts/btrfs-scrub.sh           >> /home/wmutschl/logs/btrfs-scrub.log           2>&1
+15 23 * * FRI  /home/wmutschl/scripts/btrfs-scrub.sh           >> /home/wmutschl/logs/btrfs-scrub.log           2>&1
 
 # Nextcloud maintenance
 15 4 * * *  /home/wmutschl/scripts/nextcloud-maintenance.sh >> /home/wmutschl/logs/nextcloud-maintenance.log 2>&1
