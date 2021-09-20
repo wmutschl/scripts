@@ -2,7 +2,7 @@
 * * * * *   curl -fsS --retry 5 -o /dev/null https://hc-ping.com/XXX
 
 # BTRFS snapshots and backups with BTRBK
-@hourly      /home/wmutschl/scripts/btrfs-btrbk.sh           >> /home/wmutschl/logs/btrfs-btrbk.log           2>&1
+0 * * * *    /home/wmutschl/scripts/btrfs-btrbk.sh           >> /home/wmutschl/logs/btrfs-btrbk.log           2>&1
 
 # BTRFS maintenance: balance
 15 3 * * SUN /home/wmutschl/scripts/btrfs-balance.sh         >> /home/wmutschl/logs/btrfs-balance.log         2>&1
