@@ -11,6 +11,14 @@ sudo crontab xyz-crontab.txt
 ```
 Note to adjust the healthchecks.io ping address.
 
+## Container settings
+
+### Swag container
+After starting the [SWAG container](https://docs.linuxserver.io/general/swag), change the security settings in the `$HOME/docker/swag/nginx/ssl.conf` file. That is, enable HSTS and uncomment all optional headers for additional security, see this [post for more information](https://discourse.linuxserver.io/t/further-discussion-on-optional-swag-headers/3367).
+
+### Gitea settings
+My settings are given in the gitea.app.ini file.
+
 ## Systemd timers for btrbk
 For machines that don't run constantly I use a systemd timer for `btrbk` instead of `cron`:
 
