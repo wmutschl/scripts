@@ -15,4 +15,10 @@ if ((Test-Admin) -eq $false)  {
 }
 
 'running with full privileges'
-restic -r B:\xps_backup backup --use-fs-snapshot --exclude-file=C:\scripts\restic-exclude-windows.txt --verbose C:\
+$scriptpath = $MyInvocation.MyCommand.Path
+$dir = Split-Path $scriptpath
+# temporarily change to the correct folder
+Push-Location $dir
+restic -r ../xps_backup backup --use-fs-snapshot --exclude-file=restic-exclude-windows.txt --verbose C:\
+# now back to previous directory
+Pop-Location
