@@ -54,3 +54,6 @@ sudo systemctl list-timers --all
 cat /var/log/btrbk.log
 cat $HOME/logs/btrfs-btrbk.log
 ``` 
+
+## Rclone and Wasabi
+Install rclone and connect it to your Wasabi bucket. I use `wasabi-rclone.conf` as configuration file. After including my AWS Access and Secret Access keys, I copy it as `.wasabi-rclone.conf`.

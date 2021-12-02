@@ -4,5 +4,5 @@ echo "*****************************************************"
 echo $(date)
 echo " "
 
-rclone --config $WASABI_RCLONE_CONF sync wasabi:$WASABI_BUCKET /media/$USER/$EXTERNAL_HDD/$WASABI_BUCKET -P
+rclone --config $WASABI_RCLONE_CONF sync wasabi:$WASABI_BUCKET $EXTERNAL_HDD/$WASABI_BUCKET -P
 if [ $? -ne 0 ]; then url=$baseurl/fail; fi
