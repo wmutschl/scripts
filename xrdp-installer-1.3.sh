@@ -3,13 +3,17 @@
 # Script_Name : xrdp-installer-1.3.sh
 # Description : Perform xRDP installation on Ubuntu 18.04,20.4,20.10,21.04 and perform
 #               additional post configuration to improve end user experience
-# Date : May 2021
+# Date : October 2021
 # written by : Griffon
 # WebSite :http://www.c-nergy.be - http://www.c-nergy.be/blog
 # Version : 1.3  
-# History : 1.3   - Removing support for Ubuntu 20.10 (End of Support soon)
-#                 - Added Support Debian (Need more testing !!!)
-#                 - Added support for Pop!_0S (Need more testing !!!)
+# History : 1.3   - Adding support for Ubuntu 21.10 (STR)
+#                 - Code modification sound redirection using meson technology (ubuntu 21.10 only so far) 
+#                 - Adding code to copy config.h file which seems to be missing from xrdp-pulseaudio modules  
+#                 - Adding support for Debian (10 and 11) (Best Effort)
+#                 - Commenting out installation of Gnome Tweaks. Tweaks is not installed anymore by default 
+#                 - Added Rules to Detect Budgie-Desktop and postConfig settings
+#                 - Added support for Pop!_0S (Best Effort !!!)
 #                 - Code Changes to detect Desktop Interface in use  
 #                 - Reworked code for xrdp removal option 
 #                 - Improved Std vs Custom installation detection process
@@ -56,7 +60,7 @@
 #---------------------------------------------------#
 
 #--Automating Script versioning 
-ScriptVer="preview-2021"
+ScriptVer="1.3"
 
 #--Detecting  OS Version 
 version=$(lsb_release -sd)
@@ -104,6 +108,11 @@ case $version in
    /bin/echo -e "\e[1;32m       |-| Desktop Version : $DesktopVer\e[0m"
     ;;
  
+   *"Ubuntu 21.10"*)
+   /bin/echo -e "\e[1;32m       |-| OS Version : $version\e[0m"
+   /bin/echo -e "\e[1;32m       |-| Desktop Version : $DesktopVer\e[0m"
+    ;;
+
    *"Pop!_OS 20.04"*)
    /bin/echo -e "\e[1;32m       |-| OS Version : $version\e[0m"
    /bin/echo -e "\e[1;32m       |-| Desktop Version : $DesktopVer\e[0m"
@@ -117,13 +126,19 @@ case $version in
   *"Debian"*)
    /bin/echo -e "\e[1;32m       |-| OS Version  : $version\e[0m"
    /bin/echo -e "\e[1;32m       |-| Desktop Version : $DesktopVer\e[0m"
+
+   if [[ $Release="11" ]]
+   then 
+    zenity --info --text="You are running Debian 11. Please note that standard mode will not allow you to perform remote connection against Gnome Desktop.  This is a known Debian/xrdp issue. Use custom install mode" --width=500
+    exit
+   fi 
    ;;
 
   *)
     /bin/echo -e "\e[1;31m  !--------------------------------------------------------------!\e[0m"
 	/bin/echo -e "\e[1;31m  ! Your system is not running a supported version !             !\e[0m"
 	/bin/echo -e "\e[1;31m  ! The script has been tested only on the following versions    !\e[0m"
-	/bin/echo -e "\e[1;31m  ! 18.04.x/20.04.x/21.04/Debian 10/Pop!_OS                      !\e[0m"
+	/bin/echo -e "\e[1;31m  ! 18.04.x/20.04.x/21.04/21.10/Debian 10/Pop!_OS                !\e[0m"
 	/bin/echo -e "\e[1;31m  ! The script is exiting...                                     !\e[0m"             
 	/bin/echo -e "\e[1;31m  !--------------------------------------------------------------!\e[0m"
 	echo
@@ -399,14 +414,21 @@ install_tweak()
 {
 echo
 /bin/echo -e "\e[1;33m   |-| Checking if Tweaks needs to be installed....    \e[0m"
-if [ "$DesktopVer" != "GNOME" ] 
+if [[ "$DesktopVer" != *"GNOME"* ]] 
 then
 /bin/echo -e "\e[1;32m       |-|  Gnome Tweaks not needed...Proceeding...     \e[0m" 
 echo
 else
 /bin/echo -e "\e[1;32m       |-|  Installing Gnome Tweaks Utility...Proceeding... \e[0m" 
 echo
-    sudo apt-get install gnome-tweak-tool -y
+	if [[ *"$version"* = *"Ubuntu 21.10"*  ]]
+    then
+	#if Ubuntu 21.10 - new version of th tool.....
+		sudo apt-get install gnome-tweaks -y
+		sudo apt-get install gnome-shell-extensions -y  
+	else
+		sudo apt-get install gnome-tweak-tool -y
+	fi
 fi
 }
 
@@ -497,7 +519,14 @@ fi
 #Backup the file before modifying it
 sudo cp /etc/xrdp/startwm.sh /etc/xrdp/startwm.sh.griffon
 echo
+
+# Custom code for Budgie Desktop 
+if [[ "$DesktopVer" == *"Budgie"* ]]
+then 
+sudo sed -i "4 a #Improved Look n Feel Method\ncat <<EOF > ~/.xsessionrc\nbudgie-desktop\nexport GNOME_SHELL_SESSION_MODE=$SessionVer\nexport XDG_CURRENT_DESKTOP=$DesktopVer\nexport XDG_DATA_DIRS=$ConfDir\nEOF\n" /etc/xrdp/startwm.sh
+else
 sudo sed -i "4 a #Improved Look n Feel Method\ncat <<EOF > ~/.xsessionrc\nexport GNOME_SHELL_SESSION_MODE=$SessionVer\nexport XDG_CURRENT_DESKTOP=$DesktopVer\nexport XDG_DATA_DIRS=$ConfDir\nEOF\n" /etc/xrdp/startwm.sh
+fi
 echo
 
 }
@@ -544,24 +573,63 @@ sudo apt source pulseaudio
 fi
 
 /bin/echo -e "\e[1;32m       |-| compile pulseaudio sources files..     \e[0m" 
-# Step 4 - Compile
-cd /tmp/pulseaudio-$pulsever
-sudo ./configure
 
-# step 5 - Create xrdp sound modules
+# Step 4 - Compile based on OS version
+
+cd /tmp/pulseaudio-$pulsever*
+PulsePath=$(pwd)
+
+if [[ *"$version"* = *"Ubuntu 21.10"*  ]]
+then 
+    #Build - new way using meson and replacing configure old school approach
+    sudo meson --prefix=$PulsePath build
+    sudo ninja -C build install
+else 
+    sudo ./configure
+fi 
+
+# step 5 - Download xrdp sound modules
 /bin/echo -e "\e[1;32m       |-| Compiling and building xRDP Sound modules...     \e[0m" 
 sudo git clone https://github.com/neutrinolabs/pulseaudio-module-xrdp.git
 cd pulseaudio-module-xrdp
-sudo ./bootstrap 
-sudo ./configure PULSE_DIR="/tmp/pulseaudio-$pulsever"
-sudo make
 
-#Step 6 copy files to correct location (as defined in /etc/xrdp/pulse/default.pa)
-/bin/echo -e "\e[1;32m       |-| copy generated files in target folder....     \e[0m" 
-cd /tmp/pulseaudio-$pulsever/pulseaudio-module-xrdp/src/.libs
-sudo install -t "/var/lib/xrdp-pulseaudio-installer" -D -m 644 *.so
-sudo install -t "/usr/lib/pulse-$pulsever/modules" -D -m 644 *.so
-echo
+# step 6 - Check if config.h file is missing...if missing..copy file from somewhere 
+if [ -f $PulsePath/pulseaudio-module-xrdp/config.h ]
+then
+	/bin/echo -e "\e[1;32m       |-| Config.h present..Proceeding...     \e[0m" 
+else
+	/bin/echo -e "\e[1;32m       |-| Config.h seems missing...Dirty fix applied..     \e[0m" 
+	sudo cp $PulsePath/build/config.h $PulsePath/pulseaudio-module-xrdp  
+fi
+
+# Step 7 - Create xrdp sound modules
+
+	sudo ./bootstrap 
+	sudo ./configure PULSE_DIR=$PulsePath
+	sudo make
+	#this will install modules in /usr/lib/pulse* directory
+	sudo make install
+
+# Step 8 copy files to correct location (as defined in /etc/xrdp/pulse/default.pa)
+
+if [[ *"$version"* = *"Ubuntu 21.10"*  ]]
+then 
+    /bin/echo -e "\e[1;32m       |-| copy generated files in target folder....     \e[0m" 
+    cd /usr/lib/pulse*/modules   #new location for the module 
+    if [ -d /var/lib/xrdp-pulseaudio-installer ]
+	then
+		 sudo install -t "/var/lib/xrdp-pulseaudio-installer" -D -m 644 *.so
+	else
+    	sudo mkdir /var/lib/xrdp-pulseaudio-installer  # this is not created automatically 
+    	sudo install -t "/var/lib/xrdp-pulseaudio-installer" -D -m 644 *.so
+    	echo
+	fi	
+else
+    /bin/echo -e "\e[1;32m       |-| copy generated files in target folder....     \e[0m" 
+    cd /tmp/pulseaudio-$pulsever/pulseaudio-module-xrdp/src/.libs
+    sudo install -t "/var/lib/xrdp-pulseaudio-installer" -D -m 644 *.so
+    echo
+fi
 
 }
 
@@ -714,7 +782,7 @@ echo
 /bin/echo -e "\e[1;36m   ! If Sound option selected, shutdown your machine completely     !\e[0m"
 /bin/echo -e "\e[1;36m   ! start it again to have sound working as expected               !\e[0m"
 /bin/echo -e "\e[1;36m   !                                                                !\e[0m"
-/bin/echo -e "\e[1;36m   ! Credits : Written by Griffon - June 2021                       !\e[0m"
+/bin/echo -e "\e[1;36m   ! Credits : Written by Griffon - October 2021                    !\e[0m"
 /bin/echo -e "\e[1;36m   !           www.c-nergy.be -xrdp-installer-v$ScriptVer.sh               !\e[0m"
 /bin/echo -e "\e[1;36m   !           ver $ScriptVer                                              !\e[0m"
 /bin/echo -e "\e[1;36m   !----------------------------------------------------------------!\e[0m"
@@ -728,7 +796,7 @@ echo
 
 install_common()
 {
-install_tweak	
+#install_tweak	
 allow_console
 create_polkit
 fix_theme
@@ -761,9 +829,9 @@ echo
 /bin/echo -e "\e[1;36m   !-----------------------------------------------------------------!\e[0m"
 /bin/echo -e "\e[1;36m   !   xrdp-installer-$ScriptVer Script                                     !\e[0m"
 /bin/echo -e "\e[1;36m   !   Support Ubuntu and Debian Distribution                        !\e[0m"
-/bin/echo -e "\e[1;36m   !   Written by Griffon - June 2021 - www.c-nergy.be               !\e[0m"
+/bin/echo -e "\e[1;36m   !   Written by Griffon - October 2021 - www.c-nergy.be            !\e[0m"
 /bin/echo -e "\e[1;36m   !                                                                 !\e[0m"
-/bin/echo -e "\e[1;36m   !   For Help and Syntax, type ./debian-xrdp-installer-$ScriptVer.sh -h   !\e[0m"
+/bin/echo -e "\e[1;36m   !   For Help and Syntax, type ./xrdp-installer-$ScriptVer.sh -h          !\e[0m"
 /bin/echo -e "\e[1;36m   !                                                                 !\e[0m"
 /bin/echo -e "\e[1;36m   !-----------------------------------------------------------------!\e[0m"
 echo
@@ -886,7 +954,7 @@ fi
 		
 		if [ $modetype = "custom" ];
 		then 
-			/bin/echo -e "\e[1;36m           |-| xrdp package already - custom mode....skipping xrdp install        \e[0m"
+			/bin/echo -e "\e[1;36m           |-| xrdp already installed - custom mode....skipping xrdp install        \e[0m"
 			PrepOS
 		else 
 			/bin/echo -e "\e[1;36m           |-| Proceed custom xrdp installation packages and customization tasks      \e[0m"
