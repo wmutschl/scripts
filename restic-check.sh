@@ -6,7 +6,7 @@ echo " "
 echo "Checking restic repo: $RESTIC_REPOSITORY"
 
 restic check
-#restic check --read-data
+restic check --read-data
 #restic check --read-data-subset=1/5
 #restic check --read-data-subset=2/5
 #restic check --read-data-subset=3/5
