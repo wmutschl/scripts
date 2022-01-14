@@ -6,7 +6,6 @@ echo " "
 echo "Pruning restic repo: $RESTIC_REPOSITORY"
 
 restic forget --keep-daily 7 --keep-weekly 5 --keep-monthly 12 --keep-yearly 1 --prune
-restic check
 
 echo " "
 echo "Finished"
