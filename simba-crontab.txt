@@ -13,5 +13,5 @@
 # Nextcloud maintenance
 15 4 * * *   /home/wmutschl/scripts/nextcloud-maintenance.sh >> /home/wmutschl/logs/nextcloud-maintenance.log 2>&1
 
-# Backup to Wasabi
-15 2 * * *   /home/wmutschl/scripts/wasabi.sh                >> /home/wmutschl/logs/wasabi.log                2>&1
+# Backup to fifei VPS using restic
+15 2 * * *   /home/wmutschl/scripts/simba2fifei-restic.sh    >> /home/wmutschl/logs/simba2fifei-restic.log    2>&1
