@@ -4,21 +4,25 @@ echo "*****************************************************"
 echo $(date)
 echo " "
 
-baseurl=$EXTERNAL_RESTIC_BASEURL
+baseurl=$MINIO_BASEURL
 curl -s --retry 3 $baseurl/start  > /dev/null
 url=$baseurl
 
-echo " "
-echo "Backing up $EXTERNAL_RESTIC_BTRFS_SUBVOLUME_PATH to $RESTIC_REPOSITORY"
+export RESTIC_REPOSITORY=${MINIO_PATH}
+export RESTIC_PASSWORD=$MINIO_RESTIC_PASSWORD
+export AWS_ACCESS_KEY_ID=$MINIO_AWS_ACCESS_KEY_ID
+export AWS_SECRET_ACCESS_KEY=$MINIO_AWS_SECRET_ACCESS_KEY
 
-btrfs subvolume snapshot -r $EXTERNAL_RESTIC_BTRFS_SUBVOLUME_PATH "${EXTERNAL_RESTIC_BTRFS_SUBVOLUME_PATH}_restic"
+echo " "
+echo "Backing up $MINIO_SUBVOLUMES to MINIO"
+btrfs subvolume snapshot -r $MINIO_SUBVOLUMES "${MINIO_SUBVOLUMES}_minio"
 if [ $? -ne 0 ]; then url=$baseurl/fail; fi
 restic cache --cleanup
-restic backup "${EXTERNAL_RESTIC_BTRFS_SUBVOLUME_PATH}_restic"
+restic backup "${MINIO_SUBVOLUMES}_minio"
 if [ $? -ne 0 ]; then url=$baseurl/fail; fi
 restic snapshots
 if [ $? -ne 0 ]; then url=$baseurl/fail; fi
-btrfs subvolume delete "${EXTERNAL_RESTIC_BTRFS_SUBVOLUME_PATH}_restic"
+btrfs subvolume delete "${MINIO_SUBVOLUMES}_minio"
 if [ $? -ne 0 ]; then url=$baseurl/fail; fi
 
 echo " "
