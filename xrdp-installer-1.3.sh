@@ -122,6 +122,11 @@ case $version in
    /bin/echo -e "\e[1;32m       |-| OS Version : $version\e[0m"
    /bin/echo -e "\e[1;32m       |-| Desktop Version : $DesktopVer\e[0m"
 	;;
+	
+   *"Pop!_OS 21.10"*)
+   /bin/echo -e "\e[1;32m       |-| OS Version : $version\e[0m"
+   /bin/echo -e "\e[1;32m       |-| Desktop Version : $DesktopVer\e[0m"
+	;;
   
   *"Debian"*)
    /bin/echo -e "\e[1;32m       |-| OS Version  : $version\e[0m"
