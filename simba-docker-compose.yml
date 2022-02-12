@@ -21,6 +21,7 @@ services:
       - ONLY_SUBDOMAINS=false
       - EXTRA_DOMAINS=www.${URL},${GITEA_DOMAIN},${NEXTCLOUD_DOMAIN}
       - CERTPROVIDER=letsencrypt
+      - DOCKER_MODS=linuxserver/mods:swag-dashboard
     volumes:
       - ${SWAG_ROOT}:/config
     ports:
