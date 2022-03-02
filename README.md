@@ -171,10 +171,14 @@ Check the status with
 ```bash
 sudo systemctl status minio
 ```
-You can exit this with `:q` or `CTRL`+`C`.
+You can exit this with `:q` or `CTRL`+`C`. If you are unable to start the MinIO service due to a `Start request repeated too quickly` error, run `sudo systemctl reset-failed minio` and restart the service. Check the status and all should be good.
+
 
 #### 6. Accessing MinIO’s Web Interface
 Now we can access the MinIO interface using our Tailscale IP address with the port 9000 from any computer connected to the Tailscale Mesh network, e.g. `https://XXX.XX.XX.XX:9000`. Log in with the credentials from the config file and set up a bucket and corresponding access and private keys.
+
+#### 7. Update MinIO
+For updates I use the script `update-minio.sh`.
 
 ### Restic
 We can now easily use Restic and [prepare a new repo or access an old one](https://restic.readthedocs.io/en/latest/030_preparing_a_new_repo.html#minio-server). The script I use for backup purposes is `restic2minio.sh`, where the keys are stored in my `.env` file (see simba.env for an example).
