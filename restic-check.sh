@@ -3,8 +3,7 @@ eval $(grep -v -e '^#' /home/wmutschl/scripts/.env | xargs -I {} echo export \'{
 echo "*****************************************************"
 echo $(date)
 
-export RESTIC_REPOSITORY=$EXTERNAL_PATH/btrfs_docker/@docker
-export RESTIC_PASSWORD=$EXTERNAL_RESTIC_PASSWORD
+export RESTIC_REPOSITORY=${RESTIC_CHECK_PATH}
 
 echo " "
 echo "Checking restic repo: $RESTIC_REPOSITORY"
