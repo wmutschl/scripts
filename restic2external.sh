@@ -20,6 +20,7 @@ for SUBVOL in $EXTERNAL_SUBVOLUMES; do
   restic backup "${SUBVOL}_external"
   if [ $? -ne 0 ]; then url=$baseurl/fail; fi
   restic snapshots
+  restic cache --cleanup
   if [ $? -ne 0 ]; then url=$baseurl/fail; fi
   btrfs subvolume delete "${SUBVOL}_external"
   if [ $? -ne 0 ]; then url=$baseurl/fail; fi

@@ -24,6 +24,7 @@ restic snapshots
 if [ $? -ne 0 ]; then url=$baseurl/fail; fi
 btrfs subvolume delete "${MINIO_SUBVOLUMES}_minio"
 if [ $? -ne 0 ]; then url=$baseurl/fail; fi
+restic cache --cleanup
 
 echo " "
 echo "HealthChecks.io:"
