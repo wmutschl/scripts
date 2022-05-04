@@ -1,12 +1,38 @@
 version: "3"
 
 networks:
+  homepage_network:
   minio_network:
     external: false
 
 services:
+  swag:
+    image: lscr.io/linuxserver/swag:latest
+    container_name: swag
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TIMEZONE}
+      - URL=${URL}
+      - VALIDATION=http
+      - EMAIL=${EMAIL}
+      - ONLY_SUBDOMAINS=false
+      - EXTRA_DOMAINS=www.${URL}
+      - CERTPROVIDER=letsencrypt
+      - DOCKER_MODS=linuxserver/mods:swag-dashboard
+    volumes:
+      - ${SWAG_ROOT}:/config
+    ports:
+      - 443:443
+      - 80:80
+    restart: unless-stopped
+    networks:
+      - homepage_network
+
   minio:
-    image: minio/minio
+    image: minio/minio:latest
     container_name: minio
     environment:
       - MINIO_ROOT_USER=${MINIO_ROOT_USER}
