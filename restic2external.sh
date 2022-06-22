@@ -9,6 +9,7 @@ curl -s --retry 3 $baseurl/start  > /dev/null
 url=$baseurl
 
 export RESTIC_PASSWORD=$EXTERNAL_RESTIC_PASSWORD
+rm -rf /root/.cache/restic
 
 for SUBVOL in $EXTERNAL_SUBVOLUMES; do
   export RESTIC_REPOSITORY="${EXTERNAL_PATH}${SUBVOL}"
