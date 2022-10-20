@@ -41,6 +41,15 @@ services:
       - DOMAIN=${GITEA_DOMAIN}
       - RUN_MODE=prod
       - LFS_START_SERVER=true
+      - GITEA__repository__DEFAULT_BRANCH=main
+      - GITEA__oauth2__JWT_SECRET=${GITEA_JWT_SECRET}
+      - GITEA__security__SECRET_KEY=${GITEA_SECRET_KEY}
+      - GITEA__security__INTERNAL_TOKEN=${GITEA_INTERNAL_TOKEN}
+      - GITEA__security__INSTALL_LOCK=true
+      - GITEA__server__ROOT_URL=https://${GITEA_DOMAIN}
+      - GITEA__server__DISABLE_SSH=true
+      - GITEA__server__LFS_JWT_SECRET=${GITEA_LFS_JWT_SECRET}
+      - GITEA__service__DISABLE_REGISTRATION=true      
     restart: unless-stopped
     volumes:
       - ${GITEA_ROOT}:/data
