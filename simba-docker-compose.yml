@@ -7,7 +7,7 @@ networks:
 
 services:
   swag:
-    image: lscr.io/linuxserver/swag:1.31.0-ls155
+    image: lscr.io/linuxserver/swag:1.31.0-ls158
     container_name: swag
     cap_add:
       - NET_ADMIN
@@ -49,7 +49,7 @@ services:
       - GITEA__server__ROOT_URL=https://${GITEA_DOMAIN}
       - GITEA__server__DISABLE_SSH=true
       - GITEA__server__LFS_JWT_SECRET=${GITEA_LFS_JWT_SECRET}
-      - GITEA__service__DISABLE_REGISTRATION=true      
+      - GITEA__service__DISABLE_REGISTRATION=true
     restart: unless-stopped
     volumes:
       - ${GITEA_ROOT}:/data
@@ -59,7 +59,7 @@ services:
       - gitea_network
 
   nextcloud:
-    image: lscr.io/linuxserver/nextcloud:24.0.6-ls205
+    image: lscr.io/linuxserver/nextcloud:25.0.0-ls207
     container_name: nextcloud
     environment:
       - PUID=1000
@@ -76,7 +76,7 @@ services:
       - nextcloud_network
 
   mariadb:
-    image: lscr.io/linuxserver/mariadb:10.6.9-r0-ls71
+    image: lscr.io/linuxserver/mariadb:10.6.10-r0-ls72
     container_name: mariadb
     environment:
       - PUID=1000
