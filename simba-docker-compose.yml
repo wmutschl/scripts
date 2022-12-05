@@ -7,7 +7,7 @@ networks:
 
 services:
   swag:
-    image: lscr.io/linuxserver/swag:1.32.0-ls165
+    image: lscr.io/linuxserver/swag:1.32.0-ls166
     container_name: swag
     cap_add:
       - NET_ADMIN
@@ -59,7 +59,7 @@ services:
       - gitea_network
 
   nextcloud:
-    image: lscr.io/linuxserver/nextcloud:25.0.1-ls211
+    image: lscr.io/linuxserver/nextcloud:25.0.1-ls212
     container_name: nextcloud
     environment:
       - PUID=1000
