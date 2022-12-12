@@ -59,7 +59,7 @@ services:
       - gitea_network
 
   nextcloud:
-    image: lscr.io/linuxserver/nextcloud:25.0.1-ls212
+    image: lscr.io/linuxserver/nextcloud:25.0.2-ls213
     container_name: nextcloud
     environment:
       - PUID=1000
