@@ -12,6 +12,7 @@ C:/Program Files (x86)/**
 C:/Recovery/**
 C:/System Volume Information/**
 C:/Windows/**
+C:/Windows.old/**
 AMTAG.BIN
 bootTel.dat
 DumpStack.log.tmp
