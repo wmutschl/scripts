@@ -93,7 +93,7 @@ services:
       - nextcloud_network
 
   redis:
-    image: redis:7.0.5
+    image: redis:7.0.6
     container_name: nextcloud-redis
     command: redis-server --requirepass ${REDIS_PASSWORD}
     restart: unless-stopped
