@@ -1,0 +1,56 @@
+version: "3"
+
+networks:
+  gitea_network:
+    external: false
+
+services:
+  swag:
+    image: lscr.io/linuxserver/swag:1.32.0-ls167
+    container_name: swag
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TIMEZONE}
+      - URL=${URL}
+      - SUBDOMAINS=${GITEA_DOMAIN}
+      - VALIDATION=http
+      - EMAIL=${EMAIL}
+      - ONLY_SUBDOMAINS=true
+      - CERTPROVIDER=letsencrypt
+    volumes:
+      - ${SWAG_ROOT}:/config
+    ports:
+      - 443:443
+      - 80:80
+    restart: unless-stopped
+    networks:
+      - gitea_network
+
+  gitea:
+    image: gitea/gitea:1.17.3
+    container_name: gitea
+    environment:
+      - USER_UID=1000
+      - USER_GID=1000
+      - DOMAIN=${GITEA_DOMAIN}.${URL}
+      - RUN_MODE=prod
+      - LFS_START_SERVER=true
+      - GITEA__repository__DEFAULT_BRANCH=main
+      - GITEA__oauth2__JWT_SECRET=${GITEA_JWT_SECRET}
+      - GITEA__security__SECRET_KEY=${GITEA_SECRET_KEY}
+      - GITEA__security__INTERNAL_TOKEN=${GITEA_INTERNAL_TOKEN}
+      - GITEA__security__INSTALL_LOCK=true
+      - GITEA__server__ROOT_URL=https://${GITEA_DOMAIN}.${URL}
+      - GITEA__server__DISABLE_SSH=true
+      - GITEA__server__LFS_JWT_SECRET=${GITEA_LFS_JWT_SECRET}
+      - GITEA__service__DISABLE_REGISTRATION=true
+    restart: unless-stopped
+    volumes:
+      - ${GITEA_ROOT}:/data
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    networks:
+      - gitea_network
