@@ -15,7 +15,7 @@ services:
       - PGID=1000
       - TZ=${TIMEZONE}
       - URL=${URL}
-      - SUBDOMAINS=${GITEA_DOMAIN}
+      - SUBDOMAINS=${GITEA_SUBDOMAIN}
       - VALIDATION=http
       - EMAIL=${EMAIL}
       - ONLY_SUBDOMAINS=true
