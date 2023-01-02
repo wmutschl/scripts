@@ -47,7 +47,7 @@ services:
       - nextcloud_network
 
   mariadb:
-    image: lscr.io/linuxserver/mariadb:10.6.10-r0-ls78
+    image: lscr.io/linuxserver/mariadb:10.6.10-r0-ls79
     container_name: mariadb
     environment:
       - PUID=1000
