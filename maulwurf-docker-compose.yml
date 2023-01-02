@@ -35,7 +35,7 @@ services:
     environment:
       - USER_UID=1000
       - USER_GID=1000
-      - DOMAIN=${GITEA_DOMAIN}.${URL}
+      - DOMAIN=${GITEA_SUBDOMAIN}.${URL}
       - RUN_MODE=prod
       - LFS_START_SERVER=true
       - GITEA__repository__DEFAULT_BRANCH=main
@@ -43,7 +43,7 @@ services:
       - GITEA__security__SECRET_KEY=${GITEA_SECRET_KEY}
       - GITEA__security__INTERNAL_TOKEN=${GITEA_INTERNAL_TOKEN}
       - GITEA__security__INSTALL_LOCK=true
-      - GITEA__server__ROOT_URL=https://${GITEA_DOMAIN}.${URL}
+      - GITEA__server__ROOT_URL=https://${GITEA_SUBDOMAIN}.${URL}
       - GITEA__server__DISABLE_SSH=true
       - GITEA__server__LFS_JWT_SECRET=${GITEA_LFS_JWT_SECRET}
       - GITEA__service__DISABLE_REGISTRATION=true
