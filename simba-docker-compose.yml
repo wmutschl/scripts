@@ -5,7 +5,7 @@ networks:
 
 services:
   swag:
-    image: lscr.io/linuxserver/swag:1.32.0-ls169
+    image: lscr.io/linuxserver/swag:1.32.0-ls170
     container_name: swag
     cap_add:
       - NET_ADMIN
@@ -30,7 +30,7 @@ services:
       - nextcloud_network
 
   nextcloud:
-    image: lscr.io/linuxserver/nextcloud:25.0.2-ls215
+    image: lscr.io/linuxserver/nextcloud:25.0.2-ls216
     container_name: nextcloud
     environment:
       - PUID=1000
