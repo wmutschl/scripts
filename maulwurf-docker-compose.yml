@@ -6,7 +6,7 @@ networks:
 
 services:
   swag:
-    image: lscr.io/linuxserver/swag:1.32.0-ls170
+    image: lscr.io/linuxserver/swag:1.32.0-ls171
     container_name: swag
     cap_add:
       - NET_ADMIN
@@ -30,7 +30,7 @@ services:
       - gitea_network
 
   gitea:
-    image: gitea/gitea:1.18.0
+    image: gitea/gitea:1.18.1
     container_name: gitea
     environment:
       - USER_UID=1000
