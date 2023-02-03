@@ -1,17 +1,40 @@
 #!/bin/bash
 #####################################################################################################
-# Script_Name : xrdp-installer-1.3.sh
-# Description : Perform xRDP installation on Ubuntu 18.04,20.4,20.10,21.04 and perform
+# Script_Name : xrdp-installer-1.4.6.sh
+# Description : Perform xRDP installation on Ubuntu 18.04,20.04,22.10,22.04 and perform
 #               additional post configuration to improve end user experience
-# Date : October 2021
+# Date : Janvier 2023
 # written by : Griffon
 # WebSite :http://www.c-nergy.be - http://www.c-nergy.be/blog
-# Version : 1.3  
-# History : 1.3   - Adding support for Ubuntu 21.10 (STR)
+# Version : 1.4.6  
+# History : 1.4.6 - Fixing Issues about fuse and fuse3 package conflicts (Thanks to Hiero that detected the issue)
+#                 - Add MP3 Codec support for Audio redirection 
+#                 - Using the latest stable Release packages of xrdp and xorgxrdp from Github in custom install mode(instead of Dev Branch)
+#         : 1.4.5 - Fixing Sound redirection issue for Linux Mint Users
+#         : 1.4.4 - Adding Support to Ubuntu 22.10
+#         : 1.4.3 - Install by default meson,tdb-tools,libtdb-dev,doxygen,check(to support kubuntu and others)
+#                 - Adding basic error handling sound redirection function
+#                 - Adding Warning message if user already logged on locally and trying to rdp into the system (Thanks to Hiero)
+#                 - Minor bug fixing 
+#         : 1.4.2 - Improving SSH Detection Process...
+#                 - checking PipeWire vs PulseAudio. If PipeWire, no sound redirection
+#                 - fixing bug in code for Sound redirection (thank to Hiero for his findings !!!)
+#                 - adding support Linux Mint (Software rendering only)
+#                 - adding support Pop!OS 22.04
+#                 - Removing support Pop!OS 21.04 & 21.10
+#                 - Additional Checks on add xrdp to ssl-cert function
+#                 - Small Change code Structure 
+#           1.4.1 - adding --recursive to git downloads
+#                 - xrdp login screen background color set to grey
+#           1.4   - Re-write sound section (since meson is used) 
+#                 - Added Pop!Os 21.10 as Detected system (Best Effort !!!)
+#                 - Detect when install from ssh session - (Experimental)
+#                 - Adding Support Ubuntu 22.04
+#                 - Removing Support for Ubuntu 21.04 (End Standard Support)
+#                 - Improved Debian detection and warning about std vs custom install
+#         : 1.3   - Adding support for Ubuntu 21.10 (STR)
 #                 - Code modification sound redirection using meson technology (ubuntu 21.10 only so far) 
-#                 - Adding code to copy config.h file which seems to be missing from xrdp-pulseaudio modules  
 #                 - Adding support for Debian (10 and 11) (Best Effort)
-#                 - Commenting out installation of Gnome Tweaks. Tweaks is not installed anymore by default 
 #                 - Added Rules to Detect Budgie-Desktop and postConfig settings
 #                 - Added support for Pop!_0S (Best Effort !!!)
 #                 - Code Changes to detect Desktop Interface in use  
@@ -56,27 +79,237 @@
 ####################################################################################################
 
 #---------------------------------------------------#
-# Variables and Constants                           #
+# Set Script Version                                #
 #---------------------------------------------------#
 
 #--Automating Script versioning 
-ScriptVer="1.3"
+ScriptVer="1.4.6"
+
+#---------------------------------------------------#
+# Script Version information Displayed              #
+#---------------------------------------------------#
+
+echo
+/bin/echo -e "\e[1;36m   !-----------------------------------------------------------------!\e[0m"
+/bin/echo -e "\e[1;36m   !   xrdp-installer-$ScriptVer Script                                   !\e[0m"
+/bin/echo -e "\e[1;36m   !   Support Ubuntu and Debian Distribution                        !\e[0m"
+/bin/echo -e "\e[1;36m   !   Written by Griffon - January 2023  -  www.c-nergy.be          !\e[0m"
+/bin/echo -e "\e[1;36m   !                                                                 !\e[0m"
+/bin/echo -e "\e[1;36m   !   For Help and Syntax, type ./xrdp-installer-$ScriptVer.sh -h        !\e[0m"
+/bin/echo -e "\e[1;36m   !                                                                 !\e[0m"
+/bin/echo -e "\e[1;36m   !-----------------------------------------------------------------!\e[0m"
+echo
+/bin/echo -e "\e[1;38m   !----------------------------------------------------------------!\e[0m"
+/bin/echo -e "\e[1;38m   !                      Disclaimer                                !\e[0m"
+/bin/echo -e "\e[1;38m   !   !! Script provided AS IS. Use it at your own risk.!!         !\e[0m"
+/bin/echo -e "\e[1;38m   !----------------------------------------------------------------!\e[0m"
+
+#---------------------------------------------------#
+# Variables and Constants                           #
+#---------------------------------------------------#
 
 #--Detecting  OS Version 
 version=$(lsb_release -sd)
 codename=$(lsb_release -sc)
 Release=$(lsb_release -sr)
 
-#--Detecting variable related to Desktop interface and Directory path  
-DesktopVer="$XDG_CURRENT_DESKTOP" 
-SessionVer="$GNOME_SHELL_SESSION_MODE"
-ConfDir="$XDG_DATA_DIRS"
+#--Additional Code for Linux Mint
+ucodename=$(cat /etc/os-release | grep UBUNTU_CODENAME | awk -F"=" '{print $2}')
 
 #Define Dwnload variable to point to ~/Downloads folder of user running the script
 Dwnload=$(xdg-user-dir DOWNLOAD)
 
 #Initialzing other variables
 modetype="unknown"
+
+#---------------------------------------------------------#
+# Initial checks and Validation Process ....              #
+#---------------------------------------------------------#
+
+#-- Detect if multiple runs and install mode used..... 
+echo
+/bin/echo -e "\e[1;33m   |-| Checking if script has run at least once...        \e[0m"
+if [ -f /etc/xrdp/xrdp-installer-check.log ]
+then
+	modetype=$(sed -n 1p /etc/xrdp/xrdp-installer-check.log)
+	/bin/echo -e "\e[1;32m       |-| Script has already run. Detected mode...: $modetype\e[0m"
+    echo
+else 
+	/bin/echo -e "\e[1;32m       |-| First run or xrdp-installer-check.log deleted. Detected mode : $modetype        \e[0m"
+    echo
+fi 
+
+#--Detecting variable related to Desktop interface and Directory path (Experimental)
+if [[ *"$XDG_SESSION_TYPE"* = *"tty"*  ]] 
+then 
+	##-- Detect if installation done via ssh connections 
+	/bin/echo -e "\e[1;32m       |-| Detected Installation via ssh.... \e[0m"
+	echo
+	# Need new code to display DE Option available
+	/bin/echo -e "\e[1;33m  !--------------------------------------------------------------!\e[0m"
+	/bin/echo -e "\e[1;33m  ! Your are using the xrdp-installer script via ssh connection  !\e[0m"
+	/bin/echo -e "\e[1;33m  ! You might need to create your ~/.xsessionrc file manually    !\e[0m"
+	/bin/echo -e "\e[1;33m  !                                                              !\e[0m"
+	/bin/echo -e "\e[1;33m  ! The script will proceed....but might not work !!             !\e[0m"             
+	/bin/echo -e "\e[1;33m  !--------------------------------------------------------------!\e[0m"
+	echo
+
+    cnt=$(ls /usr/share/xsessions |  wc -l)
+    echo $cnt 
+
+    # Try to Detect automatically Desktop Interface. If multiple options present, create a menu
+    if [ "$cnt" -gt "1" ]
+    then 
+        PS3='Please specify which DE you are using...: '
+        desk=($(ls /usr/share/xsessions | cut -d "." -f 1))
+    
+        select menu in "${desk[@]}";
+        do
+        echo -e "\nyou picked $menu ($REPLY)"
+        break;
+        
+        done         
+    else
+        desk=($(ls /usr/share/xsessions | cut -d "." -f 1))
+        menu=$desk
+        echo "Desktop seems to be based on....: " $menu
+    fi
+
+    # Display Menu and set variable to be used 
+
+    case $menu in
+
+    "ubuntu")
+    DesktopVer="ubuntu:GNOME"
+    SessionVer="ubuntu"
+    #might needed not to loose FireFox Snap version 
+    ConfDir="/usr/share/ubuntu:/usr/local/share/:/usr/share/:/var/lib/snapd/desktop"
+    /bin/echo -e "\e[1;32m       |-| Session         : $SessionVer\e[0m"
+    /bin/echo -e "\e[1;32m       |-| Desktop Version : $DesktopVer\e[0m"
+    /bin/echo -e "\e[1;32m       |-| Conf. Directory : $ConfDir\e[0m"
+    ;;
+
+    "gnome")
+    #Untouched gnome Desktop will work out of the box with xRDP 
+    #DesktopVer=""
+    #SessionVer=""
+    /bin/echo -e "\e[1;32m       |-| Session         : $SessionVer\e[0m"
+    /bin/echo -e "\e[1;32m       |-| Desktop Version : $DesktopVer\e[0m"
+    /bin/echo -e "\e[1;32m       |-| Conf. Directory : $ConfDir\e[0m"
+    ;;
+    
+    "budgie-desktop")
+    DesktopVer="Budgie:GNOME"
+    #SessionVer=""
+    ConfDir="/usr/share/budgie-desktop:/usr/share/gnome:/usr/local/share:/usr/share:/var/lib/snapd/desktop"	     
+    /bin/echo -e "\e[1;32m       |-| Session         : $SessionVer\e[0m"
+    /bin/echo -e "\e[1;32m       |-| Desktop Version : $DesktopVer\e[0m"
+    /bin/echo -e "\e[1;32m       |-| Conf. Directory : $ConfDir\e[0m"
+    ;;
+
+    "plasma")
+    DesktopVer="KDE"
+    SessionVer=""
+    ConfDir="/usr/share/plasma:/usr/local/share:/usr/share:/var/lib/snapd/desktop"	     
+    /bin/echo -e "\e[1;32m       |-| Session         : $SessionVer\e[0m"
+    /bin/echo -e "\e[1;32m       |-| Desktop Version : $DesktopVer\e[0m"
+    /bin/echo -e "\e[1;32m       |-| Conf. Directory : $ConfDir\e[0m"
+    ;;
+
+    "pop")
+    DesktopVer="pop:GNOME"
+    SessionVer="pop"
+    ConfDir="/usr/share/pop:/usr/share/gnome:/\${PWD}/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/usr/local/share:/usr/share"
+    /bin/echo -e "\e[1;32m       |-| Session         : $SessionVer\e[0m"
+    /bin/echo -e "\e[1;32m       |-| Desktop Version : $DesktopVer\e[0m"
+    /bin/echo -e "\e[1;32m       |-| Conf. Directory : $ConfDir\e[0m"
+    ;;
+    
+    "mate")
+    DesktopVer="MATE"
+    SessionVer=""
+    ConfDir="/usr/share/mate:/\${PWD}/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/usr/local/share:/usr/share:/var/lib/snapd/desktop"
+    /bin/echo -e "\e[1;32m       |-| Session         : $SessionVer\e[0m"
+    /bin/echo -e "\e[1;32m       |-| Desktop Version : $DesktopVer\e[0m"
+    /bin/echo -e "\e[1;32m       |-| Conf. Directory : $ConfDir\e[0m"
+    ;;
+    
+    "cinnamon2d")
+    DesktopVer="X-Cinnamon"
+    SessionVer=""
+    ConfDir="/usr/share/gnome:/usr/share/cinnamon:/\${PWD}/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/usr/local/share:/usr/share:"
+    GDMSess="cinnamon"	
+    /bin/echo -e "\e[1;32m       |-| Session         : $SessionVer\e[0m"
+    /bin/echo -e "\e[1;32m       |-| Desktop Version : $DesktopVer\e[0m"
+    /bin/echo -e "\e[1;32m       |-| Conf. Directory : $ConfDir\e[0m"   
+    ;;
+
+    "cinnamon2")
+    DesktopVer="X-Cinnamon"
+    SessionVer=""
+    ConfDir="/usr/share/gnome:/usr/share/cinnamon:/\${PWD}/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/usr/local/share:/usr/share:"
+    GDMSess="cinnamon"	
+    /bin/echo -e "\e[1;32m       |-| Session         : $SessionVer\e[0m"
+    /bin/echo -e "\e[1;32m       |-| Desktop Version : $DesktopVer\e[0m"
+    /bin/echo -e "\e[1;32m       |-| Conf. Directory : $ConfDir\e[0m"
+    ;;
+
+    "xfce")
+    DesktopVer="XFCE"
+    SessionVer=""
+    GDMSess="xubuntu"
+    ConfDir="/usr/share/xfce4:/usr/share/xubuntu:/usr/share/gnome:/usr/local/share:/usr/share:/var/lib/snapd/desktop"	
+    /bin/echo -e "\e[1;32m       |-| Session         : $SessionVer\e[0m"
+    /bin/echo -e "\e[1;32m       |-| Desktop Version : $DesktopVer\e[0m"
+    /bin/echo -e "\e[1;32m       |-| Conf. Directory : $ConfDir\e[0m"
+    ;;
+
+    "xubuntu")
+    DesktopVer="XFCE"
+    SessionVer=""
+    GDMSess="xubuntu"
+    ConfDir="/usr/share/xfce4:/usr/share/xubuntu:/usr/share/gnome:/usr/local/share:/usr/share:/var/lib/snapd/desktop"	
+    /bin/echo -e "\e[1;32m       |-| Session         : $SessionVer\e[0m"
+    /bin/echo -e "\e[1;32m       |-| Desktop Version : $DesktopVer\e[0m"
+    /bin/echo -e "\e[1;32m       |-| Conf. Directory : $ConfDir\e[0m"
+    ;; 
+
+    "lxqt")
+    DesktopVer="LXQt"
+    SessionVer=""	
+    ConfDir="/usr/share/Lubuntu:/usr/local/share:/usr/share:/var/lib/snapd/desktop"
+    /bin/echo -e "\e[1;32m       |-| Session         : $SessionVer\e[0m"
+    /bin/echo -e "\e[1;32m       |-| Desktop Version : $DesktopVer\e[0m"
+    /bin/echo -e "\e[1;32m       |-| Conf. Directory : $ConfDir\e[0m" 
+    ;; 
+    
+    "LXDE")
+    DesktopVer="LXDE"
+    SessionVer=""	
+    /bin/echo -e "\e[1;32m       |-| Session         : $SessionVer\e[0m"
+    /bin/echo -e "\e[1;32m       |-| Desktop Version : $DesktopVer\e[0m"
+    /bin/echo -e "\e[1;32m       |-| Conf. Directory : $ConfDir\e[0m"  
+    ;;  
+
+    *)
+    /bin/echo -e "\e[1;31m  !--------------------------------------------------------------!\e[0m"
+    /bin/echo -e "\e[1;31m  ! Unable to detect a supported OS Version & Desktop interface  !\e[0m"
+    /bin/echo -e "\e[1;31m  ! The script has been tested only on specific versions         !\e[0m"
+    /bin/echo -e "\e[1;31m  !                                                              !\e[0m"
+    /bin/echo -e "\e[1;31m  ! The script is exiting...                                     !\e[0m"             
+    /bin/echo -e "\e[1;31m  !--------------------------------------------------------------!\e[0m"
+    echo
+    exit
+    ;;
+    esac
+
+else
+	##-- Installation is performed via an existing Desktop Interface...Trying to detect it....
+	DesktopVer="$XDG_CURRENT_DESKTOP" 
+	SessionVer="$GNOME_SHELL_SESSION_MODE"
+	ConfDir="$XDG_DATA_DIRS"
+    GDMSess="$GDMSESSION"
+fi
 
 #--------------------------------------------------------------------------#
 # -----------------------Function Section - DO NOT MODIFY -----------------#
@@ -103,12 +336,12 @@ case $version in
    /bin/echo -e "\e[1;32m       |-| Desktop Version : $DesktopVer\e[0m"
     ;;
  
-   *"Ubuntu 21.04"*)
+   *"Ubuntu 22.04"*)
    /bin/echo -e "\e[1;32m       |-| OS Version : $version\e[0m"
    /bin/echo -e "\e[1;32m       |-| Desktop Version : $DesktopVer\e[0m"
     ;;
- 
-   *"Ubuntu 21.10"*)
+
+   *"Ubuntu 22.10"*)
    /bin/echo -e "\e[1;32m       |-| OS Version : $version\e[0m"
    /bin/echo -e "\e[1;32m       |-| Desktop Version : $DesktopVer\e[0m"
     ;;
@@ -118,24 +351,41 @@ case $version in
    /bin/echo -e "\e[1;32m       |-| Desktop Version : $DesktopVer\e[0m"
     ;;
  
-   *"Pop!_OS 21.04"*)
-   /bin/echo -e "\e[1;32m       |-| OS Version : $version\e[0m"
-   /bin/echo -e "\e[1;32m       |-| Desktop Version : $DesktopVer\e[0m"
-	;;
-	
-   *"Pop!_OS 21.10"*)
+   *"Pop!_OS 22.04"*)
    /bin/echo -e "\e[1;32m       |-| OS Version : $version\e[0m"
    /bin/echo -e "\e[1;32m       |-| Desktop Version : $DesktopVer\e[0m"
 	;;
   
+   *"Mint"*)
+   /bin/echo -e "\e[1;32m       |-| OS Version : $version\e[0m"
+   /bin/echo -e "\e[1;32m       |-| Desktop Version : $DesktopVer\e[0m"
+	;;
+
   *"Debian"*)
    /bin/echo -e "\e[1;32m       |-| OS Version  : $version\e[0m"
    /bin/echo -e "\e[1;32m       |-| Desktop Version : $DesktopVer\e[0m"
 
-   if [[ $Release="11" ]]
+   if [[ $Release = "11" ]] && [[ -z "$adv"  ]]
    then 
-    zenity --info --text="You are running Debian 11. Please note that standard mode will not allow you to perform remote connection against Gnome Desktop.  This is a known Debian/xrdp issue. Use custom install mode" --width=500
-    exit
+		#Check if Custom Install already performed...if yes, enable sound 
+		if [[ $modetype = "custom" ]] && [[ $fixSound = "yes" ]]
+		then 
+      		/bin/echo -e "\e[1;32m       |-| Install Mode (Debian)   : Custom...Proceeding\e[0m"
+			/bin/echo -e "\e[1;32m       |-| Enabling Sound (Debian) : .........Proceeding\e[0m"
+		else	
+			/bin/echo -e "\e[1;31m  !--------------------------------------------------------------!\e[0m"
+			/bin/echo -e "\e[1;31m  ! You are running Debian 11 ! Please note that standard Mode   !\e[0m"
+			/bin/echo -e "\e[1;31m  ! will not allow you to perform remote connection against      !\e[0m"
+			/bin/echo -e "\e[1;31m  ! Gnome Desktop. This is a known Debian/xRDP issue             !\e[0m"
+			/bin/echo -e "\e[1;31m  ! Use custom install mode                                      !\e[0m"
+			/bin/echo -e "\e[1;31m  !                                                              !\e[0m"             
+			/bin/echo -e "\e[1;31m  ! The script is exiting...                                     !\e[0m"             
+			/bin/echo -e "\e[1;31m  !--------------------------------------------------------------!\e[0m"
+			echo
+			exit
+		fi   
+   else
+	 /bin/echo -e "\e[1;32m       |-| Install Mode (Debian)  : Check Done...Proceeding\e[0m"
    fi 
    ;;
 
@@ -143,7 +393,7 @@ case $version in
     /bin/echo -e "\e[1;31m  !--------------------------------------------------------------!\e[0m"
 	/bin/echo -e "\e[1;31m  ! Your system is not running a supported version !             !\e[0m"
 	/bin/echo -e "\e[1;31m  ! The script has been tested only on the following versions    !\e[0m"
-	/bin/echo -e "\e[1;31m  ! 18.04.x/20.04.x/21.04/21.10/Debian 10/Pop!_OS                !\e[0m"
+	/bin/echo -e "\e[1;31m  ! Ubuntu 18.04.x/20.04.x/22.04/21.10/Debian 10/11              !\e[0m"
 	/bin/echo -e "\e[1;31m  ! The script is exiting...                                     !\e[0m"             
 	/bin/echo -e "\e[1;31m  !--------------------------------------------------------------!\e[0m"
 	echo
@@ -152,13 +402,14 @@ case $version in
 esac
 echo
 }
+
 #---------------------------------------------------#
 # Function 1  - check xserver-xorg-core package....
 #---------------------------------------------------#
 
 check_hwe()
 {
-Release=$(lsb_release -sr)
+#Release=$(lsb_release -sr)
 echo
 /bin/echo -e "\e[1;33m |-| Detecting xserver-xorg-core package installed \e[0m"
 
@@ -189,23 +440,38 @@ PrepOS()
 echo 
 /bin/echo -e "\e[1;33m   |-| Custom actions based on OS Version....       \e[0m" 
 
+#Debian Specific - add in source backport package to download necessary packages - Debian Specific
 if [[ *"$version"* = *"Debian"*  ]]
 then
- #Disable cdrom source.list to avoid prompt during install # DEBIAN SPECIFIC
- sudo sed -i 's/deb cdrom:/#deb cdrom:/' /etc/apt/sources.list
- sudo apt-get update
+sudo sed -i 's/deb cdrom:/#deb cdrom:/' /etc/apt/sources.list
+sudo apt-get update 
+sudo apt-get install -y software-properties-common
+sudo apt-add-repository -s -y 'deb http://deb.debian.org/debian '$codename'-backports main'
+sudo apt-get update 
+
+#--Needed to be created manually or compilation fails 
+sudo mkdir /usr/local/lib/xrdp/
+fi
+#--End Debian Specific --# 
+
+#installing paclt tool because will be used to detect which sound server running....-Ubuntu 22.10
+if [[ *"$version"* =  *"Ubuntu 22.10"*  ]]
+then
+/bin/echo -e "\e[1;32m       |-|  Installing pulseaudio-utils...Proceeding...     \e[0m" 
+    sudo apt-get -y install pulseaudio-utils 
 fi
 
-##--Need to use Variables !!!!! 
+## POP!OS Color #363533
 if [[ *"$version"* = *"Debian"*  ]]
 then
 	CustomPix="griffon_logo_xrdpd.bmp"
-    CustomColor="27354D"
+    #CustomColor="27354D"
+    CustomColor="333333"
 else 
 	CustomPix="griffon_logo_xrdp.bmp"
-	CustomColor="4F194C"
+	#CustomColor="4F194C"
+    CustomColor="333333"
 fi
-
 
 }
 
@@ -228,6 +494,7 @@ then
 	sudo apt-get install xorgxrdp-hwe-18.04
 else
     sudo apt-get install xrdp -y
+    #sudo apt install gnome-shell-extension-manager
 fi
 }
 
@@ -242,25 +509,12 @@ fi
 install_prereqs() {
 
 echo 
-/bin/echo -e "\e[1;33m   |-|Installing prerequisites packages       \e[0m" 
+/bin/echo -e "\e[1;33m   |-| Installing prerequisites packages       \e[0m" 
 echo
-#Debian Specific - add in source backport package to download necessary packages - Debian Specific
-if [[ *"$version"* = *"Debian"*  ]]
-then
-sudo apt-get install -y software-properties-common
-sudo apt-add-repository -s -y 'deb http://deb.debian.org/debian '$codename'-backports main'
-#sudo sed -i 's/deb cdrom:/#deb cdrom:/' /etc/apt/sources.list
-sudo apt-get update 
-
-#--Needed to be created manually or compilation fails 
-sudo mkdir /usr/local/lib/xrdp/
-fi
-
-#--End Debian Specific --# 
 
 #Install packages
-sudo apt-get -y install git
-sudo apt-get -y install libx11-dev libxfixes-dev libssl-dev libpam0g-dev libtool libjpeg-dev flex bison gettext autoconf libxml-parser-perl libfuse-dev xsltproc libxrandr-dev python3-libxml2 nasm fuse pkg-config git intltool checkinstall
+sudo apt-get -y install git jq
+sudo apt-get -y install libmp3lame-dev curl libfuse-dev libx11-dev libxfixes-dev libssl-dev libpam0g-dev libtool libjpeg-dev flex bison gettext autoconf libxml-parser-perl xsltproc libxrandr-dev python3-libxml2 nasm pkg-config git intltool checkinstall
 echo
 
 #-- check if no error during Installation of missing packages
@@ -319,12 +573,18 @@ fi
 echo
 /bin/echo -e "\e[1;32m       |-|  Downloading xRDP Binaries.....     \e[0m" 
 echo
-git clone https://github.com/neutrinolabs/xrdp.git
+LastReleaseXrdp=$(curl --silent "https://api.github.com/repos/neutrinolabs/xrdp/releases/latest" | jq -r .tag_name)
+git clone -b $LastReleaseXrdp  https://github.com/neutrinolabs/xrdp.git --recursive
+
 echo 
 /bin/echo -e "\e[1;32m       |-|  Downloading xorgxrdp Binaries...     \e[0m" 
 echo
+LastReleaseXorgxrdp=$(curl --silent "https://api.github.com/repos/neutrinolabs/xorgxrdp/releases/latest" | jq -r .tag_name)
+git clone -b $LastReleaseXorgxrdp  https://github.com/neutrinolabs/xorgxrdp.git --recursive
 
-git clone https://github.com/neutrinolabs/xorgxrdp.git
+#Code for later to download Dev Version of the packages 
+#git clone https://github.com/neutrinolabs/xrdp.git --recursive
+#git clone https://github.com/neutrinolabs/xorgxrdp.git --recursive
 
 }
 
@@ -343,7 +603,7 @@ cd $Dwnload/xrdp
 pkgver=$(git describe  --abbrev=0 --tags  | cut -dv -f2)
 
 sudo ./bootstrap
-sudo ./configure --enable-fuse --enable-jpeg --enable-rfxcodec
+sudo ./configure --enable-fuse --enable-jpeg --enable-rfxcodec --enable-mp3lame
 sudo make
 
 #-- check if no error during compilation 
@@ -426,14 +686,8 @@ echo
 else
 /bin/echo -e "\e[1;32m       |-|  Installing Gnome Tweaks Utility...Proceeding... \e[0m" 
 echo
-	if [[ *"$version"* = *"Ubuntu 21.10"*  ]]
-    then
-	#if Ubuntu 21.10 - new version of th tool.....
-		sudo apt-get install gnome-tweaks -y
-		sudo apt-get install gnome-shell-extensions -y  
-	else
-		sudo apt-get install gnome-tweak-tool -y
-	fi
+    #sudo apt-get install gnome-tweak-tool -y (old name)
+    sudo apt-get install gnome-tweaks -y
 fi
 }
 
@@ -466,9 +720,8 @@ echo
 /bin/echo -e "\e[1;33m   |-| Creating Polkit exceptions rules...    \e[0m"
 echo
 
-
 #All Ubuntu versions,Debian Version, Pop OS version
-sudo bash -c "cat >/etc/polkit-1/localauthority/50-local.d/45-allow.colord.pkla" <<EOF
+sudo bash -c "cat >/etc/polkit-1/localauthority/50-local.d/45-allow-colord.pkla" <<EOF
 [Allow Colord all Users]
 Identity=unix-user:*
 Action=org.freedesktop.color-manager.create-device;org.freedesktop.color-manager.create-profile;org.freedesktop.color-manager.delete-device;org.freedesktop.color-manager.delete-profile;org.freedesktop.color-manager.modify-device;org.freedesktop.color-manager.modify-profile
@@ -504,8 +757,11 @@ EOF
 fi
 
 }
+
+
+
 #---------------------------------------------------#
-# Function 11 - Fixing Theme and Extensions .... 
+# Function 12 - Fixing Theme and Extensions .... 
 #---------------------------------------------------#
 
 fix_theme()
@@ -529,10 +785,23 @@ echo
 if [[ "$DesktopVer" == *"Budgie"* ]]
 then 
 sudo sed -i "4 a #Improved Look n Feel Method\ncat <<EOF > ~/.xsessionrc\nbudgie-desktop\nexport GNOME_SHELL_SESSION_MODE=$SessionVer\nexport XDG_CURRENT_DESKTOP=$DesktopVer\nexport XDG_DATA_DIRS=$ConfDir\nEOF\n" /etc/xrdp/startwm.sh
+elif [[ "$DesktopVer" == *"XFCE"* ]] || [[ "$DesktopVer" == *"cinnamon"* ]] 
+then
+sudo sed -i "4 a #Improved Look n Feel Method\ncat <<EOF > ~/.xsessionrc\nexport GDMSESSION=$GDMSess\nexport XDG_CURRENT_DESKTOP=$DesktopVer\nexport XDG_DATA_DIRS=$ConfDir\nEOF\n" /etc/xrdp/startwm.sh
 else
 sudo sed -i "4 a #Improved Look n Feel Method\ncat <<EOF > ~/.xsessionrc\nexport GNOME_SHELL_SESSION_MODE=$SessionVer\nexport XDG_CURRENT_DESKTOP=$DesktopVer\nexport XDG_DATA_DIRS=$ConfDir\nEOF\n" /etc/xrdp/startwm.sh
 fi
 echo
+
+#---------------------------------------------------#
+# Hiero Contribution !! Code & Idea ! Thank you Hiero  
+#---------------------------------------------------#
+echo
+/bin/echo -e "\e[1;33m   |-| Enable Warning Msg multi-connections....    \e[0m"
+echo
+
+# Warning Message if locally logged user tries to perform a remote desktop connection 
+sudo sed -i "11 a #Check if user already logged in.\nif [ -n \"""$\(loginctl session-status $\(loginctl show-user $\USER | sed -n -e \"""s/Sessions=//p\""") | grep Leader: | grep -E \"""\gdm|sddm|lightdm\""")\""" ];\nthen\nprintf \"""You are locally logged on.\\\nTo Remote Connect, logout from local session first.\""" | xmessage -title Warning -buttons Exit -default Exit:1 -center -fg gold -bg black -fn \"""-*-*-*-r-*--0-250-0-0-p-*-iso8859-1\""" -file - \nexit 1 \nfi\n" /etc/xrdp/startwm.sh
 
 }
 
@@ -553,88 +822,96 @@ pulsever=$(pulseaudio --version | awk '{print $2}')
 if [[ *"$version"* = *"Debian"*  ]]
 then
 # Step 0 - Install Some PreReqs
+/bin/echo -e "\e[1;32m       	|-| Install dev tools used to compile sound modules..     \e[0m" 
+echo
 sudo apt-get install libconfig-dev -y
-sudo apt-get install git libpulse-dev autoconf m4 intltool build-essential dpkg-dev libtool libsndfile-dev libcap-dev -y libjson-c-dev
+sudo apt-get install git libpulse-dev autoconf m4 intltool build-essential dpkg-dev libtool libsndfile-dev libcap-dev libjson-c-dev -y
 sudo apt build-dep pulseaudio -y
-/bin/echo -e "\e[1;32m       |-| Download pulseaudio sources files..     \e[0m" 
-# Step 3 -  Download pulseaudio source in /tmp directory - Debian source repo should be already enabled
-cd /tmp
-sudo apt source pulseaudio=$pulsever
-else 
+elif  [[ *"$version"* = *"Mint"* ]]; then
+# Step 0 - Install Some PreReqs
+echo
+/bin/echo -e "\e[1;32m       	|-| Enabling Sources Repository for Linux Mint..     \e[0m" 
+echo
+sudo bash -c "cat >/etc/apt/sources.list.d/official-source-repositories.list" <<EOF
+deb-src http://packages.linuxmint.com $codename main upstream import backport 
+
+deb-src http://archive.ubuntu.com/ubuntu $ucodename main restricted universe multiverse
+deb-src http://archive.ubuntu.com/ubuntu $ucodename-updates main restricted universe multiverse
+deb-src http://archive.ubuntu.com/ubuntu $ucodename-backports main restricted universe multiverse
+
+deb-src http://security.ubuntu.com/ubuntu/ $ucodename-security main restricted universe multiverse
+EOF
+sudo apt-get update
+else
 # Step 1 - Enable Source Code Repository
+/bin/echo -e "\e[1;32m      	|-| Adding Source Code Repository..     \e[0m"
+echo 
 sudo apt-add-repository -s -y 'deb http://archive.ubuntu.com/ubuntu/ '$codename' main restricted'
 sudo apt-add-repository -s -y 'deb http://archive.ubuntu.com/ubuntu/ '$codename' restricted universe main multiverse'
 sudo apt-add-repository -s -y 'deb http://archive.ubuntu.com/ubuntu/ '$codename'-updates restricted universe main multiverse'
 sudo apt-add-repository -s -y 'deb http://archive.ubuntu.com/ubuntu/ '$codename'-backports main restricted universe multiverse'
 sudo apt-add-repository -s -y 'deb http://archive.ubuntu.com/ubuntu/ '$codename'-security main restricted universe main multiverse'
 sudo apt-get update
+fi
+
 # Step 2 - Install Some PreReqs
-sudo apt-get install git libpulse-dev autoconf m4 intltool build-essential dpkg-dev libtool libsndfile-dev libcap-dev -y libjson-c-dev
+sudo apt-get install git libpulse-dev autoconf m4 intltool build-essential dpkg-dev libtool libsndfile-dev libcap-dev libjson-c-dev libconfig-dev -y
+
+# Additional Libs needed for other Distributions like Kubuntu (for security only)
+sudo apt-get install meson -y
+sudo apt-get install libtdb-dev -y
+sudo apt-get install doxygen -y
+sudo apt-get install check -y
 sudo apt build-dep pulseaudio -y
+
+echo
 /bin/echo -e "\e[1;32m       |-| Download pulseaudio sources files..     \e[0m" 
 # Step 3 -  Download pulseaudio source in /tmp directory - Debian source repo should be already enabled
 cd /tmp
-sudo apt source pulseaudio
-fi
+apt source pulseaudio
+/bin/echo -e "\e[1;32m       |-| Compile pulseaudio sources files..     \e[0m" 
 
-/bin/echo -e "\e[1;32m       |-| compile pulseaudio sources files..     \e[0m" 
-
-# Step 4 - Compile based on OS version
-
+# Step 4 - Compile PulseAudio based on OS version & PulseAudio Version
 cd /tmp/pulseaudio-$pulsever*
 PulsePath=$(pwd)
 
-if [[ *"$version"* = *"Ubuntu 21.10"*  ]]
-then 
-    #Build - new way using meson and replacing configure old school approach
-    sudo meson --prefix=$PulsePath build
-    sudo ninja -C build install
-else 
-    sudo ./configure
-fi 
+cd "$PulsePath"
+    if [ -x ./configure ]; then
+        #if pulseaudio version <15.0, then autotools will be used (legacy) 
+        ./configure
+    elif [ -f ./meson.build ]; then
+          #if pulseaudio version >15.0, then meson tools will be used (new)
+        sudo meson --prefix=$PulsePath build
+     #  sudo ninja -C build install - not needed and break sound redirection - Thanks to Hiero for spotting it :)
+    fi
 
-# step 5 - Download xrdp sound modules
+# step 5 - Create xrdp sound modules
+cd /tmp
 /bin/echo -e "\e[1;32m       |-| Compiling and building xRDP Sound modules...     \e[0m" 
-sudo git clone https://github.com/neutrinolabs/pulseaudio-module-xrdp.git
+git clone https://github.com/neutrinolabs/pulseaudio-module-xrdp.git
 cd pulseaudio-module-xrdp
+./bootstrap 
+./configure PULSE_DIR=$PulsePath
+make
+#this will install modules in /usr/lib/pulse* directory
+sudo make install
 
-# step 6 - Check if config.h file is missing...if missing..copy file from somewhere 
-if [ -f $PulsePath/pulseaudio-module-xrdp/config.h ]
-then
-	/bin/echo -e "\e[1;32m       |-| Config.h present..Proceeding...     \e[0m" 
-else
-	/bin/echo -e "\e[1;32m       |-| Config.h seems missing...Dirty fix applied..     \e[0m" 
-	sudo cp $PulsePath/build/config.h $PulsePath/pulseaudio-module-xrdp  
-fi
-
-# Step 7 - Create xrdp sound modules
-
-	sudo ./bootstrap 
-	sudo ./configure PULSE_DIR=$PulsePath
-	sudo make
-	#this will install modules in /usr/lib/pulse* directory
-	sudo make install
-
-# Step 8 copy files to correct location (as defined in /etc/xrdp/pulse/default.pa)
-
-if [[ *"$version"* = *"Ubuntu 21.10"*  ]]
+#-- check if no error during compilation 
+if [ $? -eq 0 ]
 then 
-    /bin/echo -e "\e[1;32m       |-| copy generated files in target folder....     \e[0m" 
-    cd /usr/lib/pulse*/modules   #new location for the module 
-    if [ -d /var/lib/xrdp-pulseaudio-installer ]
-	then
-		 sudo install -t "/var/lib/xrdp-pulseaudio-installer" -D -m 644 *.so
-	else
-    	sudo mkdir /var/lib/xrdp-pulseaudio-installer  # this is not created automatically 
-    	sudo install -t "/var/lib/xrdp-pulseaudio-installer" -D -m 644 *.so
-    	echo
-	fi	
-else
-    /bin/echo -e "\e[1;32m       |-| copy generated files in target folder....     \e[0m" 
-    cd /tmp/pulseaudio-$pulsever/pulseaudio-module-xrdp/src/.libs
-    sudo install -t "/var/lib/xrdp-pulseaudio-installer" -D -m 644 *.so
-    echo
+echo
+/bin/echo -e "\e[1;32m       |-|  Make Operation Completed successfully....xRDP Sound     \e[0m" 
+echo
+else 
+echo
+/bin/echo -e "\e[1;31m   !---------------------------------------------!\e[0m"
+/bin/echo -e "\e[1;31m   !   Error while Executing compilation         !\e[0m"
+/bin/echo -e "\e[1;31m   !   Sound Redirection failed...               !\e[0m"
+/bin/echo -e "\e[1;31m   !   The Script is exiting....                 !\e[0m"
+/bin/echo -e "\e[1;31m   !---------------------------------------------!\e[0m"
+exit
 fi
+
 
 }
 
@@ -665,7 +942,7 @@ then
 	/bin/echo -e "\e[1;32m       |-| necessary file already available...skipping   \e[0m"
 else
 	/bin/echo -e "\e[1;32m       |-| Downloading additional file...: logo_xrdp image   \e[0m"
-	wget http://www.c-nergy.be/downloads/"$CustomPix"
+	wget https://www.c-nergy.be/downloads/"$CustomPix"
 fi
 
 #Check where to copy the logo file
@@ -697,12 +974,18 @@ fix_ssl()
 echo 
 /bin/echo -e "\e[1;33m   |-| Fixing SSL Permissions settings...       \e[0m" 
 echo 
-if id -Gn xrdp | grep ssl-cert 
-then 
-/bin/echo -e "\e[1;32m   !--xrdp already member ssl-cert...Skipping ---!\e[0m" 
-else
-	sudo adduser xrdp ssl-cert 
+if ! id -u xrdp > /dev/null 2>&1; then
+    echo "The user does not exist; Do Nothing:"
+else   
+    if id -Gn xrdp | grep ssl-cert 
+    then 
+        /bin/echo -e "\e[1;32m   !--xrdp already member ssl-cert...Skipping ---!\e[0m" 
+    else
+	    sudo adduser xrdp ssl-cert 
+    fi
 fi
+
+
 }
 
 #---------------------------------------------------#
@@ -787,9 +1070,9 @@ echo
 /bin/echo -e "\e[1;36m   ! If Sound option selected, shutdown your machine completely     !\e[0m"
 /bin/echo -e "\e[1;36m   ! start it again to have sound working as expected               !\e[0m"
 /bin/echo -e "\e[1;36m   !                                                                !\e[0m"
-/bin/echo -e "\e[1;36m   ! Credits : Written by Griffon - October 2021                    !\e[0m"
-/bin/echo -e "\e[1;36m   !           www.c-nergy.be -xrdp-installer-v$ScriptVer.sh               !\e[0m"
-/bin/echo -e "\e[1;36m   !           ver $ScriptVer                                              !\e[0m"
+/bin/echo -e "\e[1;36m   ! Credits : Written by Griffon - Jan   2023                      !\e[0m"
+/bin/echo -e "\e[1;36m   !           www.c-nergy.be -xrdp-installer-v$ScriptVer.sh             !\e[0m"
+/bin/echo -e "\e[1;36m   !           ver $ScriptVer                                            !\e[0m"
 /bin/echo -e "\e[1;36m   !----------------------------------------------------------------!\e[0m"
 echo
 }
@@ -801,7 +1084,7 @@ echo
 
 install_common()
 {
-#install_tweak	
+install_tweak	
 allow_console
 create_polkit
 fix_theme
@@ -826,20 +1109,6 @@ enable_service
 #------------                 MAIN SCRIPT SECTION       -------------------# 
 #--------------------------------------------------------------------------#
 
-#---------------------------------------------------#
-# Script Version information Displayed              #
-#---------------------------------------------------#
-
-echo
-/bin/echo -e "\e[1;36m   !-----------------------------------------------------------------!\e[0m"
-/bin/echo -e "\e[1;36m   !   xrdp-installer-$ScriptVer Script                                     !\e[0m"
-/bin/echo -e "\e[1;36m   !   Support Ubuntu and Debian Distribution                        !\e[0m"
-/bin/echo -e "\e[1;36m   !   Written by Griffon - October 2021 - www.c-nergy.be            !\e[0m"
-/bin/echo -e "\e[1;36m   !                                                                 !\e[0m"
-/bin/echo -e "\e[1;36m   !   For Help and Syntax, type ./xrdp-installer-$ScriptVer.sh -h          !\e[0m"
-/bin/echo -e "\e[1;36m   !                                                                 !\e[0m"
-/bin/echo -e "\e[1;36m   !-----------------------------------------------------------------!\e[0m"
-echo
 
 #----------------------------------------------------------#
 # Step 0 -Detecting if Parameters passed to script ....    #
@@ -932,22 +1201,6 @@ then
 	exit
 fi
 
-#---------------------------------------------------------#
-# Step 4 - Executing the installation & config tasks .... #
-#---------------------------------------------------------#
-
-#-- Detect if multiple runs and install mode used..... 
-echo
-/bin/echo -e "\e[1;33m   |-| Checking if script has run at least once...        \e[0m"
-if [ -f /etc/xrdp/xrdp-installer-check.log ]
-then
-	modetype=$(sed -n 1p /etc/xrdp/xrdp-installer-check.log)
-	/bin/echo -e "\e[1;32m       |-| Script has already run. Detected mode...: $modetype\e[0m"
-
-else 
-	/bin/echo -e "\e[1;32m       |-| First run or xrdp-installer-check.log deleted. Detected mode : $modetype        \e[0m"
-fi 
-
 #---------------------------------------------------------------------------------------
 #- Detect Standard vs custom install mode and additional options...
 #----------------------------------------------------------------------------------------
@@ -956,32 +1209,38 @@ fi
 	then
 		echo
 		/bin/echo -e "\e[1;33m   |-| custom installation mode detected.        \e[0m"
+		/bin/echo -e "\e[1;32m      |-| Previous Install Mode... :  $modetype      \e[0m"
 		
 		if [ $modetype = "custom" ];
 		then 
 			/bin/echo -e "\e[1;36m           |-| xrdp already installed - custom mode....skipping xrdp install        \e[0m"
 			PrepOS
-		else 
+		elif [ $modetype = "standard" ];
+        then
+            /bin/echo -e "\e[1;31m           |-| Cannot Mix Std vs Custom Install Mode....skipping xrdp install        \e[0m"
+			
+        else 
 			/bin/echo -e "\e[1;36m           |-| Proceed custom xrdp installation packages and customization tasks      \e[0m"
 			PrepOS
-			install_custom
-			install_common
+    		install_custom
+            install_common
 		
 			#create the file used a detection method 
-			sudo touch /etc/xrdp/xrdp-installer-check.log
+	     	sudo touch /etc/xrdp/xrdp-installer-check.log
 			sudo bash -c 'echo "custom" >/etc/xrdp/xrdp-installer-check.log'
 		fi		
 
 	else
 		echo
 			/bin/echo -e "\e[1;33m   |-| Additional checks Std vs Custom Mode..       \e[0m"
+            /bin/echo -e "\e[1;32m      |-| Previous Install Mode... :  $modetype      \e[0m"
 		if [ $modetype = "standard" ];
 		then 
 			/bin/echo -e "\e[1;35m           |-| xrdp already installed - standard mode....skipping install  \e[0m"
 			PrepOS
 		elif [ $modetype = "custom" ]
         then 
-        	/bin/echo -e "\e[1;35m           |-| Checking for additional parameters"
+        	/bin/echo -e "\e[1;31m           |-| Cannot Mix Std vs Custom Install Mode....skipping xrdp install "
 		else
 			/bin/echo -e "\e[1;32m       |-| Proceed standard xrdp installation packages and customization tasks      \e[0m"
 			PrepOS
@@ -998,19 +1257,46 @@ fi
 #- Check for Additional Options selected 
 #----------------------------------------------------------------------------------------
 
-if [ "$fixSound" = "yes" ]; 
-then 
-		enable_sound      
-fi
-
 if [ "$fixlogin" = "yes" ]; 
 then
 	echo
 	custom_login
 fi
 
+
+if [ "$fixSound" = "yes" ]; 
+then 
+#Code to check if pipewire or PulseAudio...if Pipewire...Exit
+SndServer=$(pactl info | grep "Server Name" | cut -d: -f2)
+    if [[ "$SndServer" = *"PipeWire"* ]];
+    then 
+        echo 
+        /bin/echo -e "\e[1;31m   !----------------------------------------------------------------!\e[0m"
+        /bin/echo -e "\e[1;31m   !         WARNING - WARNING - WARNING - WARNING                  !\e[0m"
+        /bin/echo -e "\e[1;31m   !                                                                !\e[0m"
+        /bin/echo -e "\e[1;31m   !  Pipewire is not supported with xRDP Sound Redirection...      !\e[0m"
+        /bin/echo -e "\e[1;31m   !  !! Sound Redirection will not be configured Configured.!!     !\e[0m"
+        /bin/echo -e "\e[1;31m   !                                                                !\e[0m"
+        /bin/echo -e "\e[1;31m   !----------------------------------------------------------------!\e[0m"
+        echo       
+    else
+
+            enable_sound      
+    fi
+fi
+
+
+
+
 #---------------------------------------------------------------------------------------
 #- show Credits and finishing script
 #--------------------------------------------------------------------------------------- 
 
 sh_credits 
+
+
+
+
+
+
+
