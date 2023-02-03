@@ -1,5 +1,0 @@
-# Ping if server is up
-* * * * *   curl -fsS --retry 5 -o /dev/null https://hc-ping.com/XXX
-
-# Backup to MINIO using restic
-15 4 * * *   /home/ubuntu/scripts/restic2minio-ext4.sh      >> /home/ubuntu/logs/restic2minio-ext4.log          2>&1
