@@ -7,7 +7,7 @@ networks:
 
 services:
   swag:
-    image: lscr.io/linuxserver/swag:2.3.0-ls181
+    image: lscr.io/linuxserver/swag:2.5.0-ls198
     container_name: swag
     cap_add:
       - NET_ADMIN
@@ -33,7 +33,7 @@ services:
       - gitea_network
 
   nextcloud:
-    image: lscr.io/linuxserver/nextcloud:25.0.3-ls221
+    image: lscr.io/linuxserver/nextcloud:26.0.0-ls236
     container_name: nextcloud
     environment:
       - PUID=1000
@@ -50,7 +50,7 @@ services:
       - nextcloud_network
 
   mariadb:
-    image: lscr.io/linuxserver/mariadb:10.6.12-r0-ls85
+    image: lscr.io/linuxserver/mariadb:10.6.12-r0-ls91
     container_name: mariadb
     environment:
       - PUID=1000
@@ -67,7 +67,7 @@ services:
       - nextcloud_network
 
   redis:
-    image: redis:7.0.8
+    image: redis:7.0.10
     container_name: nextcloud-redis
     command: redis-server --requirepass ${REDIS_PASSWORD}
     restart: unless-stopped
@@ -75,7 +75,7 @@ services:
       - nextcloud_network
 
   gitea:
-    image: gitea/gitea:1.18.3
+    image: gitea/gitea:1.19.0
     container_name: gitea
     environment:
       - USER_UID=1000
