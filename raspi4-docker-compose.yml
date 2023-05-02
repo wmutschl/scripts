@@ -5,7 +5,7 @@ services:
     image: eclipse-mosquitto:2.0.15
     restart: unless-stopped
     volumes:
-      - "./mosquitto-data:/mosquitto"
+      - "/home/wmutschl/docker/mosquitto-data:/mosquitto"
 #    ports:
 #      - "1883:1883"
 #      - "9001:9001"
@@ -17,7 +17,7 @@ services:
     image: koenkk/zigbee2mqtt:1.30.4
     restart: unless-stopped
     volumes:
-      - ./zigbee2mqtt-data:/app/data
+      - /home/wmutschl/docker/zigbee2mqtt-data:/app/data
       - /run/udev:/run/udev:ro
     #ports:
     #  - 8080:8080
@@ -33,7 +33,7 @@ services:
     restart: unless-stopped
     network_mode: host
     volumes:
-      - ./homebridge:/homebridge
+      - /home/wmutschl/docker/homebridge:/homebridge
     logging:
       driver: json-file
       options:
