@@ -19,6 +19,70 @@ After starting the [SWAG container](https://docs.linuxserver.io/general/swag), c
 ### Gitea settings
 My settings are given in the gitea.app.ini file. This needs to be renamed to app.ini and moved into the gitea directory.
 
+## restic-server
+I am running this on a server that is only accessible via Tailscale, so the HTTP protocol is sufficient for my usecase.
+
+### Create system user and download restic-server
+```
+sudo adduser --system restic-server
+# Find the latest release on Github
+wget https://github.com/restic/rest-server/releases/download/v0.12.0/rest-server_0.12.0_linux_amd64.tar.gz
+tar xzf rest-server_0.12.0_linux_amd64.tar.gz
+sudo cp rest-server_0.12.0_linux_amd64/rest-server /usr/local/bin/restic-server
+sudo chown root:root /usr/local/bin/restic-server
+sudo chmod +x /usr/local/bin/restic-server
+sudo restic-server --version
+```
+
+### Prepare backup directory
+I call my directory *simba*:
+```sh
+sudo mkdir -p /home/restic-server/simba
+sudo chown -R restic-server /home/restic-server/
+```
+
+### Create user and password for access to restic server
+```sh
+sudo apt install apache2-utils
+cd /home/restic-server
+sudo htpasswd -B -c .htpasswd simba
+sudo chown -R restic-server .htpasswd
+sudo chmod 600 .htpasswd
+```
+Note that the username and folder need to have the same name.
+
+### create systemd service
+```sh
+sudo nano /etc/systemd/system/restic-server.service
+```
+This is the contents of the file:
+```
+[Unit]
+Description=Restic Server
+After=syslog.target
+After=network.target
+
+[Service]
+Type=simple
+User=restic-server
+ExecStart=/usr/local/bin/restic-server --path /home/restic-server --private-repos --append-only
+Restart=always
+RestartSec=5
+StandardOutput=syslog
+StandardError=syslog
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### Run restic-server using systemd
+```sh
+sudo systemctl daemon-reload
+sudo systemctl enable restic-server
+sudo systemctl start restic-server
+sudo systemctl status restic-server
+```
+
 ## Systemd timers for btrbk
 For machines that don't run constantly I use a systemd timer for `btrbk` instead of `cron`:
 
