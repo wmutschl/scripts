@@ -14,7 +14,7 @@ services:
 
   zigbee2mqtt:
     container_name: zigbee2mqtt
-    image: koenkk/zigbee2mqtt:1.30.4
+    image: koenkk/zigbee2mqtt:1.32.0
     restart: unless-stopped
     volumes:
       - /home/wmutschl/docker/zigbee2mqtt-data:/app/data
@@ -29,7 +29,7 @@ services:
 
   homebridge:
     container_name: homebridge
-    image: oznu/homebridge:2023-01-08
+    image: homebridge/homebridge:latest
     restart: unless-stopped
     network_mode: host
     volumes:
