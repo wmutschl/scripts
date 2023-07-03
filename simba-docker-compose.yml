@@ -8,7 +8,7 @@ networks:
 
 services:
   swag:
-    image: lscr.io/linuxserver/swag:2.6.0-ls220
+    image: lscr.io/linuxserver/swag:2.6.0-ls222
     container_name: swag
     cap_add:
       - NET_ADMIN
@@ -52,7 +52,7 @@ services:
       - nextcloud_network
 
   mariadb:
-    image: lscr.io/linuxserver/mariadb:10.11.3-r0-ls99
+    image: lscr.io/linuxserver/mariadb:10.11.4-r0-ls103
     container_name: mariadb
     environment:
       - PUID=1000
@@ -61,7 +61,7 @@ services:
       - MYSQL_DATABASE=${MYSQL_DATABASE}
       - MYSQL_USER=${MYSQL_USER}
       - MYSQL_PASSWORD=${MYSQL_PASSWORD}
-      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}      
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
     volumes:
       - ${NEXTCLOUD_ROOT}/mariadb:/config
     restart: unless-stopped
@@ -103,7 +103,7 @@ services:
       - gitea_network
 
   registry:
-    image: registry:2
+    image: registry:2.8.2
     container_name: registry
     volumes:
       - ${DOCKER_REGISTRY_ROOT}:/var/lib/registry
@@ -111,7 +111,7 @@ services:
     environment:
       - REGISTRY_AUTH=htpasswd
       - REGISTRY_AUTH_HTPASSWD_REALM="Registry Realm"
-      - REGISTRY_AUTH_HTPASSWD_PATH=/auth/htpasswd  
+      - REGISTRY_AUTH_HTPASSWD_PATH=/auth/htpasswd
     depends_on:
        - swag
     restart: always
