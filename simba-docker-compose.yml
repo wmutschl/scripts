@@ -8,7 +8,7 @@ networks:
 
 services:
   swag:
-    image: lscr.io/linuxserver/swag:2.6.0-ls229
+    image: lscr.io/linuxserver/swag:2.6.0-ls232
     container_name: swag
     cap_add:
       - NET_ADMIN
@@ -35,7 +35,7 @@ services:
       - registry_network
 
   nextcloud:
-    image: lscr.io/linuxserver/nextcloud:27.0.1-ls261
+    image: lscr.io/linuxserver/nextcloud:27.0.1-ls262
     container_name: nextcloud
     environment:
       - PUID=1000
@@ -52,7 +52,7 @@ services:
       - nextcloud_network
 
   mariadb:
-    image: lscr.io/linuxserver/mariadb:10.11.4-r0-ls108
+    image: lscr.io/linuxserver/mariadb:10.11.4-r0-ls109
     container_name: mariadb
     environment:
       - PUID=1000
