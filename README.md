@@ -27,11 +27,16 @@ registry_pass=
 docker run --entrypoint htpasswd registry:2 -Bbn $registry_user $registry_pass > ${DOCKER_REGISTRY_ROOT}/auth/htpasswd
 ```
 
-## restic-server
+## restic using rest-server
 I am running this on a server that is only accessible via Tailscale, so the HTTP protocol is sufficient for my usecase.
 
-### Create system user and download restic-server
+### Install restic
+```sh
+sudo apt install restic
 ```
+
+### Create system user and download rest-server
+```sh
 sudo adduser --system restic-server
 # Find the latest release on Github
 wget https://github.com/restic/rest-server/releases/download/v0.12.0/rest-server_0.12.0_linux_amd64.tar.gz
@@ -51,20 +56,22 @@ sudo chown -R restic-server /home/restic-server/
 
 ### Create user and password for access to restic server
 ```sh
-sudo apt install apache2-utils
+sudo -s
+apt install apache2-utils
 cd /home/restic-server
-sudo htpasswd -B -c .htpasswd simba
-sudo chown -R restic-server .htpasswd
-sudo chmod 600 .htpasswd
+htpasswd -B -c .htpasswd simba
+chown -R restic-server .htpasswd
+chmod 600 .htpasswd
+exit
 ```
 Note that the username and folder need to have the same name.
 
-### create systemd service
+### Create systemd service
 ```sh
 sudo nano /etc/systemd/system/restic-server.service
 ```
 This is the contents of the file:
-```
+```sh
 [Unit]
 Description=Restic Server
 After=syslog.target
@@ -76,8 +83,6 @@ User=restic-server
 ExecStart=/usr/local/bin/restic-server --path /home/restic-server --private-repos --append-only
 Restart=always
 RestartSec=5
-StandardOutput=syslog
-StandardError=syslog
 
 [Install]
 WantedBy=multi-user.target
@@ -89,6 +94,12 @@ sudo systemctl daemon-reload
 sudo systemctl enable restic-server
 sudo systemctl start restic-server
 sudo systemctl status restic-server
+```
+
+### Prepare the restic repository
+Log into the server where the data to be backed up is located and create a new restic repository following the [prepare a new restic repository](https://restic.readthedocs.io/en/latest/030_preparing_a_new_repo.html) instructions. I use the following command (note the trailing space in front of command to not save it in the history):
+```sh
+ restic -r rest:http://simba:RESTPASSWORD@TAILSCALEIP:8000/simba init
 ```
 
 ## Systemd timers for btrbk
