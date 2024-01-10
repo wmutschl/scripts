@@ -47,10 +47,11 @@ sudo chmod +x /usr/local/bin/restic-server
 sudo restic-server --version
 ```
 
-### Prepare backup directory
-I call my directory *simba*:
+### Prepare backup directories (needs to be done only once)
+I call my directories *simba* and *homebridge*:
 ```sh
 sudo mkdir -p /home/restic-server/simba
+sudo mkdir -p /home/restic-server/homebridge
 sudo chown -R restic-server /home/restic-server/
 ```
 
@@ -60,11 +61,12 @@ sudo -s
 apt install apache2-utils
 cd /home/restic-server
 htpasswd -B -c .htpasswd simba
+htpasswd -B -c .htpasswd homebridge
 chown -R restic-server .htpasswd
 chmod 600 .htpasswd
 exit
 ```
-Note that the username and folder need to have the same name.
+Note that the usernames and backup directories need to have the same name.
 
 ### Create systemd service
 ```sh
@@ -96,10 +98,11 @@ sudo systemctl start restic-server
 sudo systemctl status restic-server
 ```
 
-### Prepare the restic repository
+### Prepare the restic repository (ONLY DO ONCE)
 Log into the server where the data to be backed up is located and create a new restic repository following the [prepare a new restic repository](https://restic.readthedocs.io/en/latest/030_preparing_a_new_repo.html) instructions. I use the following command (note the trailing space in front of command to not save it in the history):
 ```sh
  restic -r rest:http://simba:RESTPASSWORD@TAILSCALEIP:8000/simba init
+ restic -r rest:http://homebridge:RESTPASSWORD@TAILSCALEIP:8000/homebridge init
 ```
 
 ## Systemd timers for btrbk
