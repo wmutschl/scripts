@@ -1,13 +1,20 @@
 #!/bin/bash
 #####################################################################################################
-# Script_Name : xrdp-installer-1.4.6.sh
-# Description : Perform xRDP installation on Ubuntu 18.04,20.04,22.10,22.04 and perform
+# Script_Name : xrdp-installer-1.4.8.sh
+# Description : Perform xRDP installation on Ubuntu 20.04,22.04,23.xx and perform
 #               additional post configuration to improve end user experience
-# Date : Janvier 2023
+# Date : Oct 2023
 # written by : Griffon
 # WebSite :http://www.c-nergy.be - http://www.c-nergy.be/blog
-# Version : 1.4.6  
-# History : 1.4.6 - Fixing Issues about fuse and fuse3 package conflicts (Thanks to Hiero that detected the issue)
+# Version : 1.4.8   
+# History : 1.4.8 - Remove Support for Ubuntu 18.04 (End of Standard Support)
+#                 - Remove Support for Ubuntu 22.10 (End of Life)
+#                 - Adding Support Ubuntu 23.10 
+#                 - Fixing versioning package
+#                 - Detecting Sound Server in use and perform sound redirection compilation accordingly
+# History : 1.4.7 - adding ubuntu 23.04 support 
+#                 - adding enable-vsock support 
+#           1.4.6 - Fixing Issues about fuse and fuse3 package conflicts (Thanks to Hiero that detected the issue)
 #                 - Add MP3 Codec support for Audio redirection 
 #                 - Using the latest stable Release packages of xrdp and xorgxrdp from Github in custom install mode(instead of Dev Branch)
 #         : 1.4.5 - Fixing Sound redirection issue for Linux Mint Users
@@ -83,7 +90,7 @@
 #---------------------------------------------------#
 
 #--Automating Script versioning 
-ScriptVer="1.4.6"
+ScriptVer="1.4.8"
 
 #---------------------------------------------------#
 # Script Version information Displayed              #
@@ -93,7 +100,7 @@ echo
 /bin/echo -e "\e[1;36m   !-----------------------------------------------------------------!\e[0m"
 /bin/echo -e "\e[1;36m   !   xrdp-installer-$ScriptVer Script                                   !\e[0m"
 /bin/echo -e "\e[1;36m   !   Support Ubuntu and Debian Distribution                        !\e[0m"
-/bin/echo -e "\e[1;36m   !   Written by Griffon - January 2023  -  www.c-nergy.be          !\e[0m"
+/bin/echo -e "\e[1;36m   !   Written by Griffon - October 2023  -  www.c-nergy.be          !\e[0m"
 /bin/echo -e "\e[1;36m   !                                                                 !\e[0m"
 /bin/echo -e "\e[1;36m   !   For Help and Syntax, type ./xrdp-installer-$ScriptVer.sh -h        !\e[0m"
 /bin/echo -e "\e[1;36m   !                                                                 !\e[0m"
@@ -113,7 +120,7 @@ version=$(lsb_release -sd)
 codename=$(lsb_release -sc)
 Release=$(lsb_release -sr)
 
-#--Additional Code for Linux Mint
+#--Additional Code for Linux Mint - Used To Configure proper Repositories
 ucodename=$(cat /etc/os-release | grep UBUNTU_CODENAME | awk -F"=" '{print $2}')
 
 #Define Dwnload variable to point to ~/Downloads folder of user running the script
@@ -326,22 +333,22 @@ echo
 
 case $version in
 
-  *"Ubuntu 18.04"*)
-   /bin/echo -e "\e[1;32m       |-| OS Version : $version\e[0m"
-   /bin/echo -e "\e[1;32m       |-| Desktop Version : $DesktopVer\e[0m"
-    ;;
-
    *"Ubuntu 20.04"*)
    /bin/echo -e "\e[1;32m       |-| OS Version : $version\e[0m"
    /bin/echo -e "\e[1;32m       |-| Desktop Version : $DesktopVer\e[0m"
     ;;
- 
+  
    *"Ubuntu 22.04"*)
    /bin/echo -e "\e[1;32m       |-| OS Version : $version\e[0m"
    /bin/echo -e "\e[1;32m       |-| Desktop Version : $DesktopVer\e[0m"
     ;;
+ 
+   *"Ubuntu 23.04"*)
+   /bin/echo -e "\e[1;32m       |-| OS Version : $version\e[0m"
+   /bin/echo -e "\e[1;32m       |-| Desktop Version : $DesktopVer\e[0m"
+    ;;
 
-   *"Ubuntu 22.10"*)
+   *"Ubuntu 23.10"*)
    /bin/echo -e "\e[1;32m       |-| OS Version : $version\e[0m"
    /bin/echo -e "\e[1;32m       |-| Desktop Version : $DesktopVer\e[0m"
     ;;
@@ -393,7 +400,7 @@ case $version in
     /bin/echo -e "\e[1;31m  !--------------------------------------------------------------!\e[0m"
 	/bin/echo -e "\e[1;31m  ! Your system is not running a supported version !             !\e[0m"
 	/bin/echo -e "\e[1;31m  ! The script has been tested only on the following versions    !\e[0m"
-	/bin/echo -e "\e[1;31m  ! Ubuntu 18.04.x/20.04.x/22.04/21.10/Debian 10/11              !\e[0m"
+	/bin/echo -e "\e[1;31m  ! Ubuntu 20.04.x/22.04/23.04/Debian 10/11/12                   !\e[0m"
 	/bin/echo -e "\e[1;31m  ! The script is exiting...                                     !\e[0m"             
 	/bin/echo -e "\e[1;31m  !--------------------------------------------------------------!\e[0m"
 	echo
@@ -409,7 +416,6 @@ echo
 
 check_hwe()
 {
-#Release=$(lsb_release -sr)
 echo
 /bin/echo -e "\e[1;33m |-| Detecting xserver-xorg-core package installed \e[0m"
 
@@ -454,25 +460,25 @@ sudo mkdir /usr/local/lib/xrdp/
 fi
 #--End Debian Specific --# 
 
-#installing paclt tool because will be used to detect which sound server running....-Ubuntu 22.10
-if [[ *"$version"* =  *"Ubuntu 22.10"*  ]]
-then
+#installing paclt tool because will be used to detect which sound server running....-Ubuntu 22.10 and later
+#if [[ *"$version"* =  *"Ubuntu 22.10"*  ]]
+#then
 /bin/echo -e "\e[1;32m       |-|  Installing pulseaudio-utils...Proceeding...     \e[0m" 
     sudo apt-get -y install pulseaudio-utils 
-fi
+#fi
 
 ## POP!OS Color #363533
 if [[ *"$version"* = *"Debian"*  ]]
 then
 	CustomPix="griffon_logo_xrdpd.bmp"
-    #CustomColor="27354D"
-    CustomColor="333333"
+        #CustomColor="27354D"
+        #CustomColor="333333"
 else 
 	CustomPix="griffon_logo_xrdp.bmp"
 	#CustomColor="4F194C"
-    CustomColor="333333"
+    #CustomColor="333333"
 fi
-
+CustomColor="333333"
 }
 
 ############################################################################
@@ -488,14 +494,7 @@ install_xrdp()
 echo 
 /bin/echo -e "\e[1;33m   |-| Installing xRDP packages       \e[0m"
 echo 
-if [[ $HWE = "yes" ]] && [[ "$version" = *"Ubuntu 18.04"* ]];
-then
-	sudo apt-get install xrdp -y
-	sudo apt-get install xorgxrdp-hwe-18.04
-else
-    sudo apt-get install xrdp -y
-    #sudo apt install gnome-shell-extension-manager
-fi
+sudo apt-get install xrdp -y
 }
 
 ############################################################################
@@ -573,19 +572,36 @@ fi
 echo
 /bin/echo -e "\e[1;32m       |-|  Downloading xRDP Binaries.....     \e[0m" 
 echo
+if [ "$devcode" = "yes" ]; 
+then 
+    echo 
+    /bin/echo -e "\e[1;33m   !--------------------------------------------------------!\e[0m" 
+    /bin/echo -e "\e[1;33m   ! Downloading Dev (unstable) Release Version Files.      !\e[0m" 
+    /bin/echo -e "\e[1;33m   !--------------------------------------------------------!\e[0m" 
+    echo
+    echo
+    /bin/echo -e "\e[1;32m       |-|  Downloading xRDP Binaries.....     \e[0m" 
+    echo
+    git clone https://github.com/neutrinolabs/xrdp.git --recursive
+    
+    echo 
+    /bin/echo -e "\e[1;32m       |-|  Downloading xorgxrdp Binaries...     \e[0m" 
+    echo
+    git clone https://github.com/neutrinolabs/xorgxrdp.git --recursive
+    LastReleaseXorgxrdp=$(git describe  --abbrev=0 --tags  | cut -dv -f2)
+    LastReleaseXrdp=$(git describe  --abbrev=0 --tags  | cut -dv -f2)
+
+else
+
 LastReleaseXrdp=$(curl --silent "https://api.github.com/repos/neutrinolabs/xrdp/releases/latest" | jq -r .tag_name)
 git clone -b $LastReleaseXrdp  https://github.com/neutrinolabs/xrdp.git --recursive
-
 echo 
 /bin/echo -e "\e[1;32m       |-|  Downloading xorgxrdp Binaries...     \e[0m" 
 echo
 LastReleaseXorgxrdp=$(curl --silent "https://api.github.com/repos/neutrinolabs/xorgxrdp/releases/latest" | jq -r .tag_name)
 git clone -b $LastReleaseXorgxrdp  https://github.com/neutrinolabs/xorgxrdp.git --recursive
 
-#Code for later to download Dev Version of the packages 
-#git clone https://github.com/neutrinolabs/xrdp.git --recursive
-#git clone https://github.com/neutrinolabs/xorgxrdp.git --recursive
-
+fi
 }
 
 #---------------------------------------------------#
@@ -600,10 +616,10 @@ echo
 cd $Dwnload/xrdp
 
 #Get the release version automatically
-pkgver=$(git describe  --abbrev=0 --tags  | cut -dv -f2)
+pkgver1=${LastReleaseXrdp#?} 
 
 sudo ./bootstrap
-sudo ./configure --enable-fuse --enable-jpeg --enable-rfxcodec --enable-mp3lame
+sudo ./configure --enable-fuse --enable-jpeg --enable-rfxcodec --enable-mp3lame --enable-vsock
 sudo make
 
 #-- check if no error during compilation 
@@ -620,7 +636,15 @@ echo
 /bin/echo -e "\e[1;31m   !---------------------------------------------!\e[0m"
 exit
 fi
-sudo checkinstall --pkgname=xrdp --pkgversion=$pkgver --pkgrelease=1 --default
+
+if [[ *"$version"* = *"Debian"*  ]]
+then
+    #when using checkinstall on debian, compilation can fail if --fstrans parameter not set
+    sudo checkinstall --fstrans=0  --pkgname=xrdp --pkgversion=$pkgver1 --pkgrelease=1 --default 
+else
+    sudo checkinstall --pkgname=xrdp --pkgversion=$pkgver1 --pkgrelease=1 --default
+fi
+
 
 #xorgxrdp package compilation
 echo
@@ -631,7 +655,8 @@ echo
 cd $Dwnload/xorgxrdp
 
 #Get the release version automatically
-pkgver=$(git describe  --abbrev=0 --tags  | cut -dv -f2)
+#pkgver=$(git describe  --abbrev=0 --tags  | cut -dv -f2)
+pkgver2=${LastReleaseXorgxrdp#?} 
 
 sudo ./bootstrap 
 sudo ./configure 
@@ -651,7 +676,16 @@ echo
 /bin/echo -e "\e[1;31m   !---------------------------------------------!\e[0m"
 exit
 fi
-sudo checkinstall --pkgname=xorgxrdp --pkgversion=1:$pkgver --pkgrelease=1 --default
+
+if [[ *"$version"* = *"Debian"*  ]]
+then
+    #when using checkinstall on debian, compilation can fail if --fstrans parameter not set
+   sudo checkinstall --fstrans=0 --pkgname=xorgxrdp --pkgversion=1:$pkgver2 --pkgrelease=1 --default
+
+else
+   sudo checkinstall --pkgname=xorgxrdp --pkgversion=1:$pkgver2 --pkgrelease=1 --default
+
+fi
 }
 
 #---------------------------------------------------#
@@ -673,7 +707,7 @@ sudo systemctl start xrdp
 ############################################################################
 
 #--------------------------------------------------------------------------#
-# Function 8 - Install Tweaks Utilty if Gnome desktop used (Optional) .... #
+# Function 8 - Install Tweaks Utility if Gnome desktop used (Optional).... #
 #--------------------------------------------------------------------------# 
 install_tweak() 
 {
@@ -721,6 +755,14 @@ echo
 echo
 
 #All Ubuntu versions,Debian Version, Pop OS version
+if [[  "$version" =  *"Ubuntu 23.10"* ]]; 
+then
+    /bin/echo -e "\e[1;32m       |-|  New Polkit version in used in Ubuntu 23.10     \e[0m"
+    /bin/echo -e "\e[1;32m       |-|  Skipping (work in progress)...     \e[0m"
+     
+else
+
+#Polkit Color Manager
 sudo bash -c "cat >/etc/polkit-1/localauthority/50-local.d/45-allow-colord.pkla" <<EOF
 [Allow Colord all Users]
 Identity=unix-user:*
@@ -731,8 +773,8 @@ ResultActive=yes
 EOF
 
 #Not to apply to Ubuntu 18.04 version but to others....This caused an issue on Ubuntu 18.04 
-if [[  "$version" !=  *"Ubuntu 18.04"* ]]; 
-then
+#if [[  "$version" !=  *"Ubuntu 18.04"* ]]; 
+#then
 sudo bash -c "cat >/etc/polkit-1/localauthority/50-local.d/46-allow-update-repo.pkla" <<EOF
 [Allow Package Management all Users]
 Identity=unix-user:*
@@ -741,7 +783,11 @@ ResultAny=yes
 ResultInactive=yes
 ResultActive=yes
 EOF
+
 fi
+
+
+
 
 #-- KDE Desktop Specific  - can be detected only at run time of the script 
 if [ "$DesktopVer" = "KDE" ];
@@ -805,12 +851,45 @@ sudo sed -i "11 a #Check if user already logged in.\nif [ -n \"""$\(loginctl ses
 
 }
 
-#---------------------------------------------------#
-# Function 12 - Enable Sound Redirection .... 
-#---------------------------------------------------#
-enable_sound()
+snd_pipewire()
 {
-echo
+    echo 
+        /bin/echo -e "\e[1;33m   !----------------------------------------------------------------!\e[0m"
+        /bin/echo -e "\e[1;33m   !         WARNING - WARNING - WARNING - WARNING                  !\e[0m"
+        /bin/echo -e "\e[1;33m   !                                                                !\e[0m"
+        /bin/echo -e "\e[1;33m   !  Pipewire support in xRDP Sound Redirection..(Testing)...      !\e[0m"
+        /bin/echo -e "\e[1;33m   !  !! Sound Redirection Configuration (BEST EFFORT).!!           !\e[0m"
+        /bin/echo -e "\e[1;33m   !                                                                !\e[0m"
+        /bin/echo -e "\e[1;33m   !----------------------------------------------------------------!\e[0m"
+        echo  
+   
+        echo
+        /bin/echo -e "\e[1;33m         |-| Proceeding Pipewire and xRDP....    \e[0m"
+        echo
+        # Install build environment
+        sudo apt install git pkg-config autotools-dev libtool make gcc
+        # Install dependencies 
+        sudo apt install libpipewire-0.3-dev libspa-0.2-dev
+        #Download source files 
+        cd ~/Downloads
+        git clone https://github.com/neutrinolabs/pipewire-module-xrdp.git --recursive
+
+        #Build & Install 
+        cd ~/Downloads/pipewire-module-xrdp
+        ./bootstrap
+        ./configure
+        make
+        sudo make install
+        echo
+        /bin/echo -e "\e[1;32m       |-|  Make Operation Completed successfully....xRDP Sound     \e[0m" 
+    
+}
+
+
+snd_pulse()
+{
+
+    echo
 /bin/echo -e "\e[1;33m   |-| Enabling Sound Redirection....    \e[0m"
 echo
 
@@ -911,6 +990,27 @@ echo
 /bin/echo -e "\e[1;31m   !---------------------------------------------!\e[0m"
 exit
 fi
+       
+}
+
+#---------------------------------------------------#
+# Function 12 - Enable Sound Redirection .... 
+#---------------------------------------------------#
+enable_sound()
+{
+
+echo
+/bin/echo -e "\e[1;33m   |-| Enabling Sound Redirection....    \e[0m"
+echo
+
+    #Code to check if pipewire or PulseAudio...
+    SndServer=$(pactl info | grep "Server Name" | cut -d: -f2)
+    if [[ "$SndServer" = *"PipeWire"* ]];
+    then 
+            snd_pipewire
+    else
+            snd_pulse
+    fi
 
 
 }
@@ -1017,7 +1117,10 @@ echo
 echo 
 
 #remove the xrdplog file created by the script 
-sudo rm /etc/xrdp/xrdp-installer-check.log
+if [ -f "/etc/xrdp/xrdp-installer-check.log" ] 
+then 
+    sudo rm /etc/xrdp/xrdp-installer-check.log
+fi
 
 #----remove xrdp package
 sudo systemctl stop xrdp
@@ -1070,7 +1173,7 @@ echo
 /bin/echo -e "\e[1;36m   ! If Sound option selected, shutdown your machine completely     !\e[0m"
 /bin/echo -e "\e[1;36m   ! start it again to have sound working as expected               !\e[0m"
 /bin/echo -e "\e[1;36m   !                                                                !\e[0m"
-/bin/echo -e "\e[1;36m   ! Credits : Written by Griffon - Jan   2023                      !\e[0m"
+/bin/echo -e "\e[1;36m   ! Credits : Written by Griffon - Oct   2023                      !\e[0m"
 /bin/echo -e "\e[1;36m   !           www.c-nergy.be -xrdp-installer-v$ScriptVer.sh             !\e[0m"
 /bin/echo -e "\e[1;36m   !           ver $ScriptVer                                            !\e[0m"
 /bin/echo -e "\e[1;36m   !----------------------------------------------------------------!\e[0m"
@@ -1123,6 +1226,7 @@ do
                 echo " --custom or -c           custom xRDP install (compilation from sources)"
 				echo " --loginscreen or -l      customize xRDP login screen"
                 echo " --remove or -r           removing xRDP packages"
+                echo " --dev or -d              download dev branch xrdp packages"
                 echo " --sound or -s            enable sound redirection in xRDP"
                 echo
                 echo "example                                                      "
@@ -1149,6 +1253,11 @@ do
         adv="yes"	
     fi
 
+   if [ "$arg" == "--dev" ] || [ "$arg" == "-d" ]
+    then
+        devcode="yes"	
+    fi
+    
     if [ "$arg" == "--remove" ] || [ "$arg" == "-r" ]
     then
         removal="yes"		
@@ -1266,23 +1375,8 @@ fi
 
 if [ "$fixSound" = "yes" ]; 
 then 
-#Code to check if pipewire or PulseAudio...if Pipewire...Exit
-SndServer=$(pactl info | grep "Server Name" | cut -d: -f2)
-    if [[ "$SndServer" = *"PipeWire"* ]];
-    then 
-        echo 
-        /bin/echo -e "\e[1;31m   !----------------------------------------------------------------!\e[0m"
-        /bin/echo -e "\e[1;31m   !         WARNING - WARNING - WARNING - WARNING                  !\e[0m"
-        /bin/echo -e "\e[1;31m   !                                                                !\e[0m"
-        /bin/echo -e "\e[1;31m   !  Pipewire is not supported with xRDP Sound Redirection...      !\e[0m"
-        /bin/echo -e "\e[1;31m   !  !! Sound Redirection will not be configured Configured.!!     !\e[0m"
-        /bin/echo -e "\e[1;31m   !                                                                !\e[0m"
-        /bin/echo -e "\e[1;31m   !----------------------------------------------------------------!\e[0m"
-        echo       
-    else
 
             enable_sound      
-    fi
 fi
 
 
