@@ -61,7 +61,7 @@ sudo -s
 apt install apache2-utils
 cd /home/restic-server
 htpasswd -B -c .htpasswd simba
-htpasswd -B -c .htpasswd homebridge
+htpasswd -B .htpasswd homebridge
 chown -R restic-server .htpasswd
 chmod 600 .htpasswd
 exit
