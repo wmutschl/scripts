@@ -5,7 +5,7 @@
 0 * * * *    /home/wmutschl/scripts/btrfs-btrbk.sh               >> /home/wmutschl/logs/btrfs-btrbk.log                  2>&1
 
 # Backup to restic-server using restic
-15 3 * * *   /home/wmutschl/scripts/restic2resticserver-btrfs.sh >> /home/wmutschl/logs/restic2resticserver-btrfs.log    2>&1
+15 3 * * *   /home/wmutschl/scripts/restic2restserver-btrfs.sh >> /home/wmutschl/logs/restic2restserver-btrfs.log    2>&1
 
 # BTRFS maintenance: balance
 15 3 * * MON   /home/wmutschl/scripts/btrfs-balance.sh         >> /home/wmutschl/logs/btrfs-balance.log         2>&1
