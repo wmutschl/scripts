@@ -9,7 +9,7 @@ networks:
 
 services:
   swag:
-    image: lscr.io/linuxserver/swag:2.8.0-ls272
+    image: lscr.io/linuxserver/swag:2.8.0-ls274
     container_name: swag
     cap_add:
       - NET_ADMIN
@@ -52,7 +52,7 @@ services:
       - nextcloud_network
 
   nextcloud-mariadb:
-    image: lscr.io/linuxserver/mariadb:10.11.5-r0-ls126
+    image: lscr.io/linuxserver/mariadb:10.11.6-r0-ls128
     container_name: nextcloud-mariadb
     environment:
       - PUID=1000
