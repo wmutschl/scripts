@@ -39,8 +39,9 @@ services:
     container_name: nextcloud
     environment:
       - PUID=1000
-      - GUID=1000
+      - PGID=1000
       - TZ=${TIMEZONE}
+      - DOCKER_MODS=linuxserver/mods:nextcloud-notify-push
     volumes:
       - ${NEXTCLOUD_ROOT}/config:/config
       - ${NEXTCLOUD_ROOT}/data:/data
@@ -56,7 +57,7 @@ services:
     container_name: nextcloud-mariadb
     environment:
       - PUID=1000
-      - GUID=1000
+      - PGID=1000
       - TZ=${TIMEZONE}
       - MYSQL_DATABASE=${MYSQL_DATABASE}
       - MYSQL_USER=${MYSQL_USER}
