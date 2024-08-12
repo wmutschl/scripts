@@ -20,7 +20,7 @@ services:
 #      - homebridge_network
 
   zigbee2mqtt:
-    image: koenkk/zigbee2mqtt:1.39.0
+    image: koenkk/zigbee2mqtt:1.39.1
     container_name: zigbee2mqtt
     restart: unless-stopped
     environment:
