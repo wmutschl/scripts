@@ -1,7 +1,0 @@
-[Unit]
-Description=btrfs-btrbk
-
-[Service]
-Type=oneshot
-ExecStart=/home/wmutschl/scripts/btrfs-btrbk.sh
-StandardOutput=append:/home/wmutschl/logs/btrfs-btrbk.log
