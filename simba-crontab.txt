@@ -12,6 +12,3 @@
 
 # Nextcloud maintenance
 15 4 * * *   /home/wmutschl/scripts/nextcloud-maintenance.sh     >> /home/wmutschl/logs/nextcloud-maintenance.log        2>&1
-
-# Backup to restic-server using restic
-15 2 * * *   /home/wmutschl/scripts/restic2restserver-btrfs.sh >> /home/wmutschl/logs/restic2restserver-btrfs.log    2>&1
