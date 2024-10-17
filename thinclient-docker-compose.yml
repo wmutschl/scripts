@@ -6,7 +6,7 @@ networks:
 
 services:
   mqtt:
-    image: eclipse-mosquitto:2.0.18
+    image: eclipse-mosquitto:2.0.20
     container_name: mosquitto
     restart: unless-stopped
     volumes:
@@ -20,7 +20,7 @@ services:
 #      - homebridge_network
 
   zigbee2mqtt:
-    image: koenkk/zigbee2mqtt:1.39.1
+    image: koenkk/zigbee2mqtt:1.40.2
     container_name: zigbee2mqtt
     restart: unless-stopped
     environment:
@@ -39,7 +39,7 @@ services:
 #      - homebridge_network
 
   homebridge:
-    image: homebridge/homebridge:2024-06-27
+    image: homebridge/homebridge:2024-10-09
     container_name: homebridge
     restart: unless-stopped
     environment:
