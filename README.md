@@ -19,13 +19,6 @@ After starting the [SWAG container](https://docs.linuxserver.io/general/swag), c
 ### Gitea settings
 My settings are given in the gitea.app.ini file. This needs to be renamed to app.ini and moved into the gitea directory.
 
-### Docker registry
-Generate a htpasswd file:
-```sh
-registry_user=
-registry_pass=
-docker run --entrypoint htpasswd registry:2 -Bbn $registry_user $registry_pass > ${DOCKER_REGISTRY_ROOT}/auth/htpasswd
-```
 
 ## restic using rest-server
 I am running this on a server that is only accessible via Tailscale, so the HTTP protocol is sufficient for my usecase.
