@@ -39,7 +39,7 @@ services:
 #      - homebridge_network
 
   homebridge:
-    image: homebridge/homebridge:2024-10-09
+    image: homebridge/homebridge:2024-10-25
     container_name: homebridge
     restart: unless-stopped
     environment:
