@@ -20,7 +20,7 @@ services:
 #      - homebridge_network
 
   zigbee2mqtt:
-    image: koenkk/zigbee2mqtt:1.41.0
+    image: koenkk/zigbee2mqtt:1.42.0
     container_name: zigbee2mqtt
     restart: unless-stopped
     environment:
@@ -39,7 +39,7 @@ services:
 #      - homebridge_network
 
   homebridge:
-    image: homebridge/homebridge:2024-10-25
+    image: homebridge/homebridge:2024-11-29
     container_name: homebridge
     restart: unless-stopped
     environment:
@@ -64,15 +64,16 @@ services:
     environment:
       - TZ=${TIMEZONE}
       - MIMIC_MODEL=TimeCapsule8,119
-      - TM_USERNAME=timemachine
-      - TM_GROUPNAME=timemachine
+      - EXTERNAL_CONF=/users
       - PASSWORD=${TM_PASSWORD}
       - TM_UID=1000
       - TM_GID=1000
       - SET_PERMISSIONS=false
       - VOLUME_SIZE_LIMIT=0
     volumes:
-      - ${TM_ROOT}:/opt/timemachine #needs to be the same as TM_USERNAME
+      - ${TM_ROOT_WILLI}:/opt/willi
+      - ${TM_ROOT_ANDREA}:/opt/andrea
+      - ${TM_CONF_DIR}:/users
     tmpfs:
       - /run/samba
     ulimits:
