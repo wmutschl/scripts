@@ -4,7 +4,6 @@ networks:
   nextcloud_network:
     name: nextcloud_network
   gitea_network:
-    external: false
     name: gitea_network
 
 services:
@@ -22,7 +21,7 @@ services:
       - EXTRA_DOMAINS=${SWAG_EXTRA_DOMAINS}
       - VALIDATION=${SWAG_VALIDATION}
       - DNSPLUGIN=${SWAG_DNSPLUGIN}
-      - EMAIL=${EMAIL}
+      - EMAIL=${SWAG_EMAIL}
       - CERTPROVIDER=${SWAG_CERTPROVIDER}
     volumes:
       - ${SWAG_ROOT}:/config
@@ -59,10 +58,10 @@ services:
       - PUID=1000
       - PGID=1000
       - TZ=${TIMEZONE}
-      - MYSQL_DATABASE=${MYSQL_DATABASE}
-      - MYSQL_USER=${MYSQL_USER}
-      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
-      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_DATABASE=${NEXTCLOUD_MARIADB_DATABASE}
+      - MYSQL_USER=${NEXTCLOUD_MARIADB_USER}
+      - MYSQL_PASSWORD=${NEXTCLOUD_MARIADB_PASSWORD}
+      - MYSQL_ROOT_PASSWORD=${NEXTCLOUD_MARIADB_PASSWORD_ROOT}
     volumes:
       - ${NEXTCLOUD_ROOT}/mariadb:/config
     restart: unless-stopped
@@ -72,7 +71,7 @@ services:
   nextcloud-redis:
     image: redis:7.4.2-bookworm
     container_name: nextcloud-redis
-    command: redis-server --requirepass ${REDIS_PASSWORD}
+    command: redis-server --requirepass ${NEXTCLOUD_REDIS_PASSWORD}
     restart: unless-stopped
     networks:
       - nextcloud_network
