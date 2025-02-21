@@ -5,6 +5,8 @@ networks:
     name: nextcloud_network
   gitea_network:
     name: gitea_network
+  mattermost_network:
+    name: mattermost_network
 
 services:
   swag:
@@ -32,6 +34,7 @@ services:
     networks:
       - nextcloud_network
       - gitea_network
+      - mattermost_network
 
   nextcloud:
     image: lscr.io/linuxserver/nextcloud:30.0.5-ls366
@@ -101,3 +104,53 @@ services:
       - /etc/localtime:/etc/localtime:ro
     networks:
       - gitea_network
+
+  mattermost:
+    depends_on:
+      - mattermost-postgres
+    image: mattermost/mattermost-team-edition:10.5
+    container_name: mattermost
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 200
+    read_only: false
+    tmpfs:
+      - /tmp
+    volumes:
+      - ${MATTERMOST_PATH_CONFIG}:/mattermost/config:rw
+      - ${MATTERMOST_PATH_DATA}:/mattermost/data:rw
+      - ${MATTERMOST_PATH_LOGS}:/mattermost/logs:rw
+      - ${MATTERMOST_PATH_PLUGINS}:/mattermost/plugins:rw
+      - ${MATTERMOST_PATH_CLIENT_PLUGINS}:/mattermost/client/plugins:rw
+      - ${MATTERMOST_PATH_BLEVE_INDEXES}:/mattermost/bleve-indexes:rw
+    environment:
+      - TZ=${TIMEZONE}
+      - MM_SQLSETTINGS_DRIVERNAME=postgres
+      - MM_SQLSETTINGS_DATASOURCE=postgres://${MATTERMOST_POSTGRES_USER}:${MATTERMOST_POSTGRES_PASSWORD}@mattermost-postgres:5432/${MATTERMOST_POSTGRES_DB}?sslmode=disable&connect_timeout=10
+      - MM_BLEVESETTINGS_INDEXDIR=/mattermost/bleve-indexes
+      - MM_SERVICESETTINGS_SITEURL=https://${MATTERMOST_DOMAIN}
+      - APP_PORT=8065
+    networks:
+      - mattermost_network
+
+  mattermost-postgres:
+    image: postgres:17-alpine
+    container_name: mattermost-postgres
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 100
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/run/postgresql
+    volumes:
+      - ${MATTERMOST_PATH_POSTGRES_DATA}:/var/lib/postgresql/data
+    environment:
+      - TZ=${TIMEZONE}
+      - POSTGRES_USER=${MATTERMOST_POSTGRES_USER}
+      - POSTGRES_PASSWORD=${MATTERMOST_POSTGRES_PASSWORD}
+      - POSTGRES_DB=${MATTERMOST_POSTGRES_DB}
+    networks:
+      - mattermost_network
