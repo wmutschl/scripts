@@ -5,11 +5,18 @@ These are the scripts I use for my [backup strategy](https://mutschler.eu/linux/
 Copy the machine specific env file and name it `.env`.
 
 ## Crontab
-You can overwrite the current crontab with the machine specific one:
+You can overwrite the current crontab with the machine specific one, but remember to adjust the healthchecks.io ping address manually.
+Depending on the machine, you might have to use sudo:
 ```sh
 sudo crontab xyz-crontab.txt
+sudo crontab -e
 ```
-Note to adjust the healthchecks.io ping address.
+On macOS, you might want to use nano to edit the crontab:
+```sh
+crontab xyz-crontab.txt
+export EDITOR=nano
+crontab -e
+```
 
 ## Container settings
 
