@@ -11,7 +11,7 @@ curl -s -m 10 --retry 5 $url/start > /dev/null
 echo " "
 echo "Running maintenance scripts"
 
-occ="docker exec -i nextcloud occ"
+occ="docker exec -i nextcloud-main occ"
 $occ db:add-missing-columns
 if [ $? -ne 0 ]; then url=$baseurl/fail; fi
 $occ db:add-missing-indices
