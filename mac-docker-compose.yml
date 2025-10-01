@@ -1,73 +1,53 @@
-networks:
-  nextcloud_network:
-    name: nextcloud_network
-
 services:
-
-  nextcloud-main:
-    image: lscr.io/linuxserver/nextcloud:31.0.6-ls382
-    container_name: nextcloud-main
-    depends_on:
-      - nextcloud-mariadb
-      - nextcloud-redis
-      - nextcloud-tailscale
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=${TIMEZONE}
-      - DOCKER_MODS=linuxserver/mods:nextcloud-notify-push
-    volumes:
-      - ${NEXTCLOUD_ROOT}/config:/config
-      - ${NEXTCLOUD_ROOT}/data:/data
-    restart: unless-stopped
-    networks:
-      - nextcloud_network
-    ports:
-      - 8080:80  # remap so there is no conflict with nextcloud-tailscale
-      - 8443:443 # remap so there is no conflict with nextcloud-tailscale
-
-  nextcloud-mariadb:
-    image: lscr.io/linuxserver/mariadb:11.4.5-r0-ls185
-    container_name: nextcloud-mariadb
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=${TIMEZONE}
-      - MYSQL_DATABASE=${NEXTCLOUD_MARIADB_DATABASE}
-      - MYSQL_USER=${NEXTCLOUD_MARIADB_USER}
-      - MYSQL_PASSWORD=${NEXTCLOUD_MARIADB_PASSWORD}
-      - MYSQL_ROOT_PASSWORD=${NEXTCLOUD_MARIADB_PASSWORD_ROOT}
-    volumes:
-      - ${NEXTCLOUD_ROOT}/mariadb:/config
-    restart: unless-stopped
-    networks:
-      - nextcloud_network
-
-  nextcloud-redis:
-    image: redis:8.0.2-bookworm
-    container_name: nextcloud-redis
-    command: redis-server --requirepass ${NEXTCLOUD_REDIS_PASSWORD}
-    restart: unless-stopped
-    networks:
-      - nextcloud_network
-
   nextcloud-tailscale:
-    image: tailscale/tailscale:v1.84.2
+    image: tailscale/tailscale:latest
     container_name: nextcloud-tailscale
-    hostname: nextcloud
+    restart: unless-stopped
+    init: true
     environment:
-      - TS_AUTHKEY=${TAILSCALE_OAUTH_KEY}?ephemeral=false
-      - "TS_EXTRA_ARGS=--advertise-tags=tag:container --reset"
+      - TS_AUTHKEY=${TAILSCALE_OAUTH_KEY}?ephemeral=false # ?ephemeral=true for testing/development
+      - TS_HOSTNAME=${TAILSCALE_HOSTNAME}
+      - TS_EXTRA_ARGS=--advertise-tags=tag:container # --reset for testing/development
       - TS_SERVE_CONFIG=/config/tailscale-nextcloud.json
       - TS_STATE_DIR=/var/lib/tailscale
-      - TS_USERSPACE=false
     volumes:
-      - ${TAILSCALE_ROOT}/state:/var/lib/tailscale
-      - ${PWD}/tailscale-config:/config
-    devices:
       - /dev/net/tun:/dev/net/tun
+      - nextcloud-tailscale-data:/var/lib/tailscale
+      - ./tailscale-config:/config
     cap_add:
-      - net_admin
-    restart: unless-stopped
+      - NET_ADMIN
+      - NET_RAW
     networks:
-      - nextcloud_network
+      - nextcloud-aio
+  
+  nextcloud-aio:
+    image: nextcloud/all-in-one:latest
+    container_name: nextcloud-aio-mastercontainer   # DO NOT CHANGE
+    restart: unless-stopped
+    depends_on:
+      - nextcloud-tailscale
+    networks:
+      - nextcloud-aio
+    volumes:
+      - nextcloud_aio_mastercontainer:/mnt/docker-aio-config
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      APACHE_PORT: 11000
+      APACHE_IP_BINDING: 0.0.0.0
+      SKIP_DOMAIN_VALIDATION: true
+      NEXTCLOUD_DATADIR: ${NEXTCLOUD_DATADIR}
+
+volumes:
+  nextcloud_aio_mastercontainer:
+    name: nextcloud_aio_mastercontainer
+  nextcloud-tailscale-data:
+    name: nextcloud-tailscale-data
+
+networks:
+  nextcloud-aio:
+    name: nextcloud-aio
+    driver: bridge
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.driver.mtu: "9001" # Jumbo Frame
+      com.docker.network.bridge.host_binding_ipv4: "127.0.0.1" # Harden aio (only if ports are exposed)

@@ -2,18 +2,29 @@
   "TCP": {
     "443": {
       "HTTPS": true
+    },
+    "8080": {
+      "HTTPS": true
     }
   },
   "Web": {
     "${TS_CERT_DOMAIN}:443": {
       "Handlers": {
         "/": {
-          "Proxy": "http://nextcloud-main:80/"
+          "Proxy": "http://nextcloud-aio-apache:11000"
+        }
+      }
+    },
+    "${TS_CERT_DOMAIN}:8080": {
+      "Handlers": {
+        "/": {
+          "Proxy": "https+insecure://nextcloud-aio-mastercontainer:8080"
         }
       }
     }
   },
   "AllowFunnel": {
-    "${TS_CERT_DOMAIN}:443": false
+    "${TS_CERT_DOMAIN}:443": false,
+    "${TS_CERT_DOMAIN}:8080": false
   }
 }
