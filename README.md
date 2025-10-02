@@ -211,3 +211,48 @@ docker compose -f mac-docker-compose.yml logs -f
 - Check logs: `docker compose -f mac-docker-compose.yml logs nextcloud-tailscale`
 - Verify Tailscale hostname: `docker exec nextcloud-tailscale tailscale status`
 - For full documentation: https://github.com/nextcloud/all-in-one
+
+### Post-installation tasks
+
+After the initial setup, perform these maintenance and configuration tasks:
+
+**1. Remove MIME type warning:**
+```sh
+docker exec --user www-data nextcloud-aio-nextcloud php occ maintenance:repair --include-expensive
+```
+
+**2. Set default phone region:**
+```sh
+docker exec --user www-data nextcloud-aio-nextcloud php occ config:system:set default_phone_region --value="DE"
+```
+
+**3. Enable Full Text Search with Elasticsearch** (if the fulltextsearch container is enabled):
+
+Allow "untested app" in the Nextcloud web UI for the three fulltextsearch apps (Settings → Apps → search for each app).
+
+Then enable and configure the apps:
+```sh
+# Enable apps
+docker exec --user www-data nextcloud-aio-nextcloud php occ app:enable fulltextsearch
+docker exec --user www-data nextcloud-aio-nextcloud php occ app:enable fulltextsearch_elasticsearch
+docker exec --user www-data nextcloud-aio-nextcloud php occ app:enable files_fulltextsearch
+
+# Configure Elasticsearch
+docker exec --user www-data nextcloud-aio-nextcloud php occ fulltextsearch:configure '{"search_platform":"OCA\\FullTextSearch_Elasticsearch\\Platform\\ElasticSearchPlatform"}'
+docker exec --user www-data nextcloud-aio-nextcloud php occ config:app:set fulltextsearch_elasticsearch elastic_host --value="http://nextcloud-aio-fulltextsearch:9200"
+docker exec --user www-data nextcloud-aio-nextcloud php occ config:app:set fulltextsearch_elasticsearch elastic_index --value="nextcloud"
+
+# Test the configuration
+docker exec --user www-data nextcloud-aio-nextcloud php occ fulltextsearch:test
+
+# Index all files (this may take a while)
+docker exec --user www-data nextcloud-aio-nextcloud php occ fulltextsearch:index
+```
+
+New files will be automatically indexed via Nextcloud's background jobs.
+
+**4. Clear Nextcloud logs (optional):**
+```sh
+# Inside the Nextcloud container, or from macOS if datadir is accessible
+docker exec --user www-data nextcloud-aio-nextcloud truncate -s 0 /var/www/html/data/nextcloud.log
+```
