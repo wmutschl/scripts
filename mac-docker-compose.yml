@@ -1,8 +1,8 @@
 services:
   nextcloud-tailscale:
-    image: tailscale/tailscale:latest
+    image: ghcr.io/tailscale/tailscale:latest
     container_name: nextcloud-tailscale
-    restart: unless-stopped
+    restart: always
     init: true
     environment:
       - TS_AUTHKEY=${TAILSCALE_OAUTH_KEY}?ephemeral=false # ?ephemeral=true for testing/development
@@ -21,9 +21,10 @@ services:
       - nextcloud-aio
   
   nextcloud-aio:
-    image: nextcloud/all-in-one:latest
+    image: ghcr.io/nextcloud-releases/all-in-one:latest
     container_name: nextcloud-aio-mastercontainer   # DO NOT CHANGE
-    restart: unless-stopped
+    init: true
+    restart: always
     depends_on:
       - nextcloud-tailscale
     networks:
@@ -36,6 +37,8 @@ services:
       APACHE_IP_BINDING: 0.0.0.0
       SKIP_DOMAIN_VALIDATION: true
       NEXTCLOUD_DATADIR: ${NEXTCLOUD_DATADIR}
+      NEXTCLOUD_MEMORY_LIMIT: 2048M  # default is 512M
+      NEXTCLOUD_UPLOAD_LIMIT: 32G  # default is 16G
 
 volumes:
   nextcloud_aio_mastercontainer:
