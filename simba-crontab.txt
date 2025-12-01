@@ -9,6 +9,3 @@
 
 # BTRFS maintenance: scrub
 15 23 1 * *  /home/wmutschl/scripts/btrfs-scrub.sh               >> /home/wmutschl/logs/btrfs-scrub.log                  2>&1
-
-# Nextcloud maintenance
-15 4 * * *   /home/wmutschl/scripts/nextcloud-maintenance.sh     >> /home/wmutschl/logs/nextcloud-maintenance.log        2>&1
