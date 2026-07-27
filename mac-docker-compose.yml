@@ -19,7 +19,7 @@ services:
       - NET_RAW
     networks:
       - nextcloud-aio
-  
+
   nextcloud-aio:
     image: ghcr.io/nextcloud-releases/all-in-one:latest
     container_name: nextcloud-aio-mastercontainer   # DO NOT CHANGE
@@ -40,11 +40,132 @@ services:
       NEXTCLOUD_MEMORY_LIMIT: 2048M  # default is 512M
       NEXTCLOUD_UPLOAD_LIMIT: 32G  # default is 16G
 
+  # ---------------------------------------------------------------------------
+  # Minecraft (Java Edition)
+  # ---------------------------------------------------------------------------
+  # The Tailscale sidecar owns the network namespace: it publishes 25565 to the
+  # LAN and forwards the same port from the tailnet (see tailscale-minecraft.json).
+  # The minecraft and minecraft-backup containers join that namespace, so they
+  # reach each other over 127.0.0.1 and RCON is never exposed outside it.
+  minecraft-tailscale:
+    image: ghcr.io/tailscale/tailscale:latest
+    container_name: minecraft-tailscale
+    restart: unless-stopped
+    init: true
+    environment:
+      - TS_AUTHKEY=${TAILSCALE_OAUTH_KEY}?ephemeral=false # ?ephemeral=true for testing/development
+      - TS_HOSTNAME=${MINECRAFT_TAILSCALE_HOSTNAME}
+      - TS_EXTRA_ARGS=--advertise-tags=tag:container # --reset for testing/development
+      - TS_SERVE_CONFIG=/config/tailscale-minecraft.json
+      - TS_STATE_DIR=/var/lib/tailscale
+      # Userspace networking, so this container needs no /dev/net/tun and no
+      # NET_ADMIN/NET_RAW. Note that it is NOT an exposure boundary: in this
+      # mode tailscaled forwards any inbound tailnet port to localhost in the
+      # namespace, so RCON on 25575 is reachable from the tailnet even though
+      # the serve config only lists 25565. Restrict that with a tailnet ACL
+      # (see README); --shields-up does not work, it kills serve too.
+      - TS_USERSPACE=true
+    volumes:
+      - minecraft-tailscale-data:/var/lib/tailscale
+      - ./tailscale-config:/config
+    ports:
+      - "25565:25565"  # LAN access; RCON (25575) stays inside the namespace
+    networks:
+      - minecraft
+
+  minecraft:
+    # The JRE must be at least as new as the one the server jar was built with.
+    # MC 26.x needs Java 25; older worlds pinned via VERSION may need java21.
+    image: itzg/minecraft-server:java25
+    container_name: minecraft
+    restart: unless-stopped
+    depends_on:
+      - minecraft-tailscale
+    network_mode: service:minecraft-tailscale
+    stdin_open: true  # required for `docker attach minecraft` and a clean SIGTERM shutdown
+    tty: true
+    stop_grace_period: 2m  # give the server time to flush chunks before SIGKILL
+    healthcheck:
+      test: ["CMD", "mc-health"]
+      start_period: 3m
+      interval: 30s
+      retries: 5
+    volumes:
+      - ${MINECRAFT_DATADIR}:/data
+    environment:
+      EULA: "TRUE"  # https://aka.ms/MinecraftEULA
+      TZ: ${TIMEZONE}
+      TYPE: VANILLA
+      VERSION: ${MINECRAFT_VERSION}  # LATEST, a release like 26.2, or 26.3-snapshot-5
+      # World directory under /data. Give snapshots their own name: loading a
+      # world in a newer version upgrades it in place and the older version will
+      # then refuse to open it.
+      LEVEL: ${MINECRAFT_LEVEL}
+
+      # --- JVM -----------------------------------------------------------------
+      MEMORY: ${MINECRAFT_MEMORY}  # sets -Xms and -Xmx to the same value (Aikar's advice)
+      USE_AIKAR_FLAGS: "true"  # G1GC tuning that avoids long stop-the-world pauses
+
+      # --- server.properties ---------------------------------------------------
+      # These overwrite server.properties on every start, so edit them here and
+      # not in the file (set OVERRIDE_SERVER_PROPERTIES=false to flip that).
+      MOTD: ${MINECRAFT_MOTD}
+      DIFFICULTY: normal
+      MODE: survival
+      MAX_PLAYERS: 10
+      VIEW_DISTANCE: 32  # server maximum; caps each player's render distance
+      SIMULATION_DISTANCE: 16  # chunks that actually tick; 32 is allowed but tanks TPS
+      SPAWN_PROTECTION: 0
+      ONLINE_MODE: "true"  # verify accounts against Mojang; do not disable
+      ENFORCE_SECURE_PROFILE: "true"
+      OPS: ${MINECRAFT_OPS}
+      WHITELIST: ${MINECRAFT_WHITELIST}
+      ENABLE_WHITELIST: "true"  # white-list=true
+      ENFORCE_WHITELIST: "true"  # kick players who are online but not listed
+      # whitelist.json is rewritten from WHITELIST on every start, so that
+      # variable is the source of truth. Use MERGE instead if you also want to
+      # add players in-game and have those additions survive a restart.
+      EXISTING_WHITELIST_FILE: MERGE
+      ENABLE_RCON: "true"
+      RCON_PASSWORD: ${MINECRAFT_RCON_PASSWORD}
+
+      # --- housekeeping --------------------------------------------------------
+      ENABLE_ROLLING_LOGS: "true"  # otherwise latest.log grows without bound
+      STOP_SERVER_ANNOUNCE_DELAY: 20  # warn players, then shut down
+
+      # Suspends the JVM when nobody is online. Left off because the port knocking
+      # it relies on does not see connections arriving through the Tailscale proxy.
+      # Not needed anyway: vanilla stops ticking on its own after
+      # pause-when-empty-seconds (60), which costs nothing to leave enabled.
+      ENABLE_AUTOPAUSE: "false"
+
+  minecraft-backup:
+    image: itzg/mc-backup:latest
+    container_name: minecraft-backup
+    restart: unless-stopped
+    depends_on:
+      - minecraft
+    network_mode: service:minecraft-tailscale
+    volumes:
+      - ${MINECRAFT_DATADIR}:/data:ro
+      - ${MINECRAFT_BACKUPDIR}:/backups
+    environment:
+      TZ: ${TIMEZONE}
+      RCON_HOST: 127.0.0.1
+      RCON_PASSWORD: ${MINECRAFT_RCON_PASSWORD}  # used to flush chunks before each snapshot
+      BACKUP_INTERVAL: "24h"
+      INITIAL_DELAY: "5m"
+      PRUNE_BACKUPS_DAYS: "14"
+      PAUSE_IF_NO_PLAYERS: "true"  # skip snapshots of an idle, unchanged world
+      BACKUP_METHOD: tar
+
 volumes:
   nextcloud_aio_mastercontainer:
     name: nextcloud_aio_mastercontainer
   nextcloud-tailscale-data:
     name: nextcloud-tailscale-data
+  minecraft-tailscale-data:
+    name: minecraft-tailscale-data
 
 networks:
   nextcloud-aio:
@@ -54,3 +175,8 @@ networks:
     driver_opts:
       com.docker.network.driver.mtu: "9001" # Jumbo Frame
       com.docker.network.bridge.host_binding_ipv4: "127.0.0.1" # Harden aio (only if ports are exposed)
+  minecraft:
+    name: minecraft
+    driver: bridge
+    enable_ipv6: false
+    # No host_binding_ipv4 here on purpose: 25565 must bind 0.0.0.0 for LAN players

@@ -256,3 +256,182 @@ New files will be automatically indexed via Nextcloud's background jobs.
 # Inside the Nextcloud container, or from macOS if datadir is accessible
 docker exec --user www-data nextcloud-aio-nextcloud truncate -s 0 /var/www/html/data/nextcloud.log
 ```
+
+## Minecraft Server (Java Edition) on macOS
+
+Vanilla server based on [itzg/minecraft-server](https://github.com/itzg/docker-minecraft-server),
+reachable both from the LAN and from the tailnet.
+
+Three containers make it up:
+
+| Container | Purpose |
+| --- | --- |
+| `minecraft-tailscale` | Owns the network namespace. Publishes `25565` to the LAN and forwards the same port from the tailnet. |
+| `minecraft` | The server itself. |
+| `minecraft-backup` | Daily world snapshots, pruned after 14 days. |
+
+`minecraft` and `minecraft-backup` join the sidecar's namespace via
+`network_mode: service:minecraft-tailscale`, so they reach each other over
+`127.0.0.1`. Only 25565 is published to the LAN, so RCON (25575) is not
+reachable from the local network.
+
+### RCON exposure on the tailnet
+
+RCON *is* reachable from the tailnet, at `<tailscale-ip>:25575`. The sidecar
+runs in Tailscale userspace mode, and in that mode tailscaled forwards **any**
+inbound tailnet port to localhost inside the namespace - it is not limited to
+the ports listed in `tailscale-config/tailscale-minecraft.json`. The serve
+config gives a clean MagicDNS endpoint; it is not a filter. Kernel mode
+(`/dev/net/tun` + `NET_ADMIN`) behaves the same way, and `--shields-up` is not
+a workaround because it blocks Serve along with everything else.
+
+Anyone on the tailnet who reaches RCON still needs `MINECRAFT_RCON_PASSWORD`,
+which is why that must be a strong random value. To close it off properly,
+scope it in the tailnet policy file, e.g.:
+
+```json
+{
+  "action": "accept",
+  "src":    ["*"],
+  "dst":    ["tag:container:25565"]
+}
+```
+
+That only takes effect once the broad default `"dst": ["*:*"]` rule is removed,
+which affects every tagged container on the tailnet - including Nextcloud - so
+review the whole policy before changing it.
+
+### Setup
+
+**1. Add the Minecraft variables to your `.env`** (copy the block from `mac.env`)
+and set at least `MINECRAFT_RCON_PASSWORD`, `MINECRAFT_OPS` and
+`MINECRAFT_WHITELIST`:
+
+```sh
+openssl rand -base64 24
+```
+
+Leaving `MINECRAFT_WHITELIST` empty disables the whitelist and lets anyone on the
+LAN or tailnet join.
+
+**2. Create the data directories:**
+
+```sh
+mkdir -p /Volumes/Docker/minecraft/data /Volumes/Docker/minecraft/backups
+```
+
+**3. Start it:**
+
+```sh
+docker compose -f mac-docker-compose.yml up -d minecraft-tailscale minecraft minecraft-backup
+```
+
+The first start downloads the server jar and generates the world, which takes a
+few minutes. Follow along with:
+
+```sh
+docker compose -f mac-docker-compose.yml logs -f minecraft
+```
+
+**4. Approve the machine** in the Tailscale admin console if your tailnet
+requires it, the same way as for `nextcloud`.
+
+### Connecting
+
+There is no web interface - a Minecraft server speaks its own TCP protocol, not
+HTTP, so opening `https://minecraft.hippocampus-rockhopper.ts.net` in a browser
+just hangs. Connect from the game instead, via *Multiplayer -> Add Server*:
+
+- LAN: `192.168.178.65` (the `IP` from `.env`)
+- Tailnet: `minecraft.hippocampus-rockhopper.ts.net`
+
+No `https://` prefix and no `:25565` suffix - the default port is implied. A
+dedicated server never appears by itself in the client's LAN list, which only
+discovers single-player worlds shared with *Open to LAN*, so it has to be added
+by address once.
+
+The client version has to match the server exactly. Check what is running with:
+
+```sh
+docker exec minecraft rcon-cli version
+```
+
+Both use the default port, so no `:25565` suffix is needed in the client.
+
+### Operating
+
+```sh
+# Server console (Ctrl-p Ctrl-q to detach without stopping the server)
+docker attach minecraft
+
+# Or run single commands over RCON
+docker exec minecraft rcon-cli list
+docker exec minecraft rcon-cli whitelist list
+docker exec minecraft rcon-cli save-all
+
+# Trigger a backup immediately instead of waiting for the interval
+docker exec minecraft-backup backup now
+
+# Graceful stop (players get a 20s warning, chunks are flushed)
+docker compose -f mac-docker-compose.yml stop minecraft
+```
+
+Settings under `environment:` in `mac-docker-compose.yml` overwrite
+`server.properties` on every start, so change them there rather than in the file.
+
+### Ops and whitelist
+
+`MINECRAFT_OPS` and `MINECRAFT_WHITELIST` in `.env` seed `ops.json` and
+`whitelist.json`. To change either list, edit `.env` and recreate the container:
+
+```sh
+docker compose -f mac-docker-compose.yml up -d minecraft
+```
+
+`docker compose restart` is not enough - it reuses the old environment.
+
+`EXISTING_WHITELIST_FILE` is set to `MERGE`, so players added in-game with
+`/whitelist add` survive a restart. The trade-off is that removals must also
+happen in-game (`/whitelist remove`) - deleting a name from
+`MINECRAFT_WHITELIST` alone does not revoke access, because `MERGE` only ever
+adds. Switch it to `SYNCHRONIZE` if you want `.env` to be the sole source of
+truth.
+
+### Updating
+
+`MINECRAFT_VERSION=LATEST` pulls the newest release on every restart, which can
+lock out players still on an older client. Pin it (e.g. `26.1`) if that matters.
+
+If you pin an older version, check the Java requirement too. The server refuses
+to start with `UnsupportedClassVersionError` when the image's JRE is older than
+the jar - class file version 69 means Java 25, 65 means Java 21. Switch the
+image tag (`itzg/minecraft-server:java25` / `:java21`) to match.
+
+### Running a snapshot
+
+Set `MINECRAFT_VERSION` to a snapshot id and give it its own world, so the
+release world is left alone and you can switch back:
+
+```sh
+MINECRAFT_VERSION=26.3-snapshot-5
+MINECRAFT_LEVEL=world-26.3-snapshot
+```
+
+List the current ids, and check which Java a given one needs, with:
+
+```sh
+curl -s https://launchermeta.mojang.com/mc/game/version_manifest_v2.json | jq '.latest'
+```
+
+Players need a matching installation in the Minecraft Launcher: *Installations
+-> New installation*, then tick **snapshots** in the version dropdown and pick
+the same id.
+
+Going back to the release is just the two variables again (`LATEST` and
+`world`) followed by `up -d minecraft`. Worlds are upgraded in place and never
+downgraded, which is why each version gets its own `MINECRAFT_LEVEL`.
+
+```sh
+docker compose -f mac-docker-compose.yml pull minecraft
+docker compose -f mac-docker-compose.yml up -d minecraft
+```
