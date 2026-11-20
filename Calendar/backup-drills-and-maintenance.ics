@@ -1,0 +1,165 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//wmutschl//scripts calendar//EN
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+X-WR-CALNAME:Backups and maintenance
+BEGIN:VEVENT
+UID:monthly-checks@scripts.mutschler.dev
+DTSTAMP:20261120T120000Z
+DTSTART;VALUE=DATE:20261212
+DTEND;VALUE=DATE:20261213
+RRULE:FREQ=MONTHLY;BYDAY=2SA
+SUMMARY:Backups: monthly checks (Wyse\, Mac mini\, Macs)
+DESCRIPTION:healthchecks.io reports failed and missed jobs by itself\; this
+  is the look around.\n- healthchecks.io: open the dashboard\, every check 
+ green.\n- Wyse: run the commands in section 10.4 (disk usage\, device stat
+ s\, btrbk list latest\, timers\, journals of send/scrub/offsite\, /srv/ha-
+ backups\, docker system df\, compare installed files with ~/scripts\, syst
+ emctl --failed).\n- Wyse: reboot only if /var/run/reboot-required exists\,
+  through dell-wyse-reboot-check (section 11.3).\n- Mac mini: the commands 
+ in section 10.7 of the Mac mini guide\; Gitea's System Notices and Actions
+  → Runners.\n- Every Mac\, including the MacBook Air: Time Machine's lat
+ est backup is recent (tmutil latestbackup).\n- MacBook Pro: the office dis
+ k has a backup from the last weeks.\nWyse guide 10.4: https://mutschler.de
+ v/linux/wyse-ubuntu-nextcloud-aio/#104-regular-checks\nMac mini guide 10.7
+ : https://mutschler.dev/apple/mac-mini-gitea-modcraft/#107-regular-checks\
+ nBackup strategy: https://mutschler.dev/stuff/backup/
+URL:https://mutschler.dev/linux/wyse-ubuntu-nextcloud-aio/#104-regular-chec
+ ks
+TRANSP:TRANSPARENT
+CATEGORIES:Backups
+BEGIN:VALARM
+ACTION:DISPLAY
+DESCRIPTION:Backups: monthly checks (Wyse\, Mac mini\, Macs)
+TRIGGER:PT9H
+END:VALARM
+END:VEVENT
+BEGIN:VEVENT
+UID:quarterly-drills-wyse-ha@scripts.mutschler.dev
+DTSTAMP:20261120T120000Z
+DTSTART;VALUE=DATE:20261205
+DTEND;VALUE=DATE:20261206
+RRULE:FREQ=MONTHLY;INTERVAL=3;BYDAY=1SA
+SUMMARY:Restore drill: Wyse and Home Assistant (quarterly)
+DESCRIPTION:A backup counts only once a restore from it has worked.\n- Copy
+  one file back from the newest hourly snapshot and the same file from HDD 
+ 1. Pass: both match the original (sha256sum).\n- AIO's backup section: Che
+ ck backup integrity. Pass: AIO reports the repository as intact.\n- Extrac
+ t one file from the newest Borg archive on the Wyse\, without AIO\, outsid
+ e the nightly jobs. Pass: the file opens\, so the Borg password in the pas
+ sword manager works.\n- Home Assistant\, Settings → System → Backups. 
+ Pass: the newest backup is on dell_wyse\, and the emergency kit is in the 
+ password manager.\nWyse guide 10.5: https://mutschler.dev/linux/wyse-ubunt
+ u-nextcloud-aio/#105-restore-drills
+URL:https://mutschler.dev/linux/wyse-ubuntu-nextcloud-aio/#105-restore-dril
+ ls
+TRANSP:TRANSPARENT
+CATEGORIES:Backups
+BEGIN:VALARM
+ACTION:DISPLAY
+DESCRIPTION:Restore drill: Wyse and Home Assistant (quarterly)
+TRIGGER:PT9H
+END:VALARM
+END:VEVENT
+BEGIN:VEVENT
+UID:quarterly-drills-gitea@scripts.mutschler.dev
+DTSTAMP:20261120T120000Z
+DTSTART;VALUE=DATE:20261219
+DTEND;VALUE=DATE:20261220
+RRULE:FREQ=MONTHLY;INTERVAL=3;BYDAY=3SA
+SUMMARY:Restore drill: Gitea on the MacBook (quarterly)
+DESCRIPTION:- Restore the newest Gitea backup on the MacBook\, with the ove
+ rride that turns mirroring off\, then remove the drill there. Pass: Gitea 
+ is healthy and lists every repository.\n- Gitea's Site Administration → 
+ System Notices. Pass: no mirror keeps failing.\n- Add mirrors for new repo
+ sitories on GitHub\, GitLab and Dynare's GitLab.\nMac mini guide 10.4: htt
+ ps://mutschler.dev/apple/mac-mini-gitea-modcraft/#104-restore-drills
+URL:https://mutschler.dev/apple/mac-mini-gitea-modcraft/#104-restore-drills
+TRANSP:TRANSPARENT
+CATEGORIES:Backups
+BEGIN:VALARM
+ACTION:DISPLAY
+DESCRIPTION:Restore drill: Gitea on the MacBook (quarterly)
+TRIGGER:PT9H
+END:VALARM
+END:VEVENT
+BEGIN:VEVENT
+UID:quarterly-updates@scripts.mutschler.dev
+DTSTAMP:20261120T120000Z
+DTSTART;VALUE=DATE:20261226
+DTEND;VALUE=DATE:20261227
+RRULE:FREQ=MONTHLY;INTERVAL=3;BYDAY=-1SA
+SUMMARY:Updates: sidecars\, Gitea\, OrbStack (quarterly)
+DESCRIPTION:- Wyse: pull and restart the Tailscale sidecar (section 10.6)\;
+  a reviewed apt full-upgrade for the Docker packages in a maintenance wind
+ ow.\n- Mac mini: Gitea and the Gitea runner (release notes first\; run the
+  backup before changing the image tag)\, PostgreSQL minor versions\, both 
+ Tailscale sidecars\, OrbStack (section 10.6).\n- After git pull in ~/scrip
+ ts on either machine: follow the README's "After a change".\nWyse guide 10
+ .6: https://mutschler.dev/linux/wyse-ubuntu-nextcloud-aio/#106-updates\nMa
+ c mini guide 10.6: https://mutschler.dev/apple/mac-mini-gitea-modcraft/#10
+ 6-updates
+URL:https://mutschler.dev/linux/wyse-ubuntu-nextcloud-aio/#106-updates
+TRANSP:TRANSPARENT
+CATEGORIES:Backups
+BEGIN:VALARM
+ACTION:DISPLAY
+DESCRIPTION:Updates: sidecars\, Gitea\, OrbStack (quarterly)
+TRIGGER:PT9H
+END:VALARM
+END:VEVENT
+BEGIN:VEVENT
+UID:yearly-drills-wyse-ha@scripts.mutschler.dev
+DTSTAMP:20261120T120000Z
+DTSTART;VALUE=DATE:20270102
+DTEND;VALUE=DATE:20270103
+RRULE:FREQ=YEARLY;BYMONTH=1;BYDAY=1SA
+SUMMARY:Restore drill: Wyse and Home Assistant (yearly)
+DESCRIPTION:- Restore a Home Assistant backup from /srv/ha-backups onto a s
+ pare SD card/SSD or into a VM\, through Restore from backup in HA's onboar
+ ding\, with the emergency kit. Pass: HA starts with my configuration.\n- C
+ ompare the Storage Box mirror with HDD 2 right after a nightly run (takes 
+ hours)\, and look at the snapshot list in the Hetzner Console. Pass: no di
+ fferences\; 10 daily snapshots are there.\n- Test HDD 1's LUKS passphrase 
+ from the password manager\, and check that the initrd still has my SSH key
+ . Pass: the passphrase is accepted\; my key is listed.\n- Go through the r
+ ecovery material (Wyse guide 10.2). Pass: every password and file is there
+  and works.\n- Check dracut-sshd's releases (section 10.6).\nWyse guide 10
+ .5: https://mutschler.dev/linux/wyse-ubuntu-nextcloud-aio/#105-restore-dri
+ lls\nHome Assistant restore: https://mutschler.dev/linux/raspi-home-assist
+ ant-os/#step-8-restore-from-a-backup
+URL:https://mutschler.dev/linux/wyse-ubuntu-nextcloud-aio/#105-restore-dril
+ ls
+TRANSP:TRANSPARENT
+CATEGORIES:Backups
+BEGIN:VALARM
+ACTION:DISPLAY
+DESCRIPTION:Restore drill: Wyse and Home Assistant (yearly)
+TRIGGER:PT9H
+END:VALARM
+END:VEVENT
+BEGIN:VEVENT
+UID:yearly-drills-mac-mini@scripts.mutschler.dev
+DTSTAMP:20261120T120000Z
+DTSTART;VALUE=DATE:20270703
+DTEND;VALUE=DATE:20270704
+RRULE:FREQ=YEARLY;BYMONTH=7;BYDAY=1SA
+SUMMARY:Restore drill: Mac mini (yearly)
+DESCRIPTION:- On the next trip: unlock the Mac mini over SSH and log in thr
+ ough Screen Sharing from outside home. Pass: everything comes back\, and t
+ he uptime check turns green.\n- Go through the recovery material (Mac mini
+  guide 10.5)\, including the expiry dates of the GitHub and GitLab tokens 
+ for the mirrors. Pass: every secret is there and works.\nMac mini guide 10
+ .4: https://mutschler.dev/apple/mac-mini-gitea-modcraft/#104-restore-drill
+ s
+URL:https://mutschler.dev/apple/mac-mini-gitea-modcraft/#104-restore-drills
+TRANSP:TRANSPARENT
+CATEGORIES:Backups
+BEGIN:VALARM
+ACTION:DISPLAY
+DESCRIPTION:Restore drill: Mac mini (yearly)
+TRIGGER:PT9H
+END:VALARM
+END:VEVENT
+END:VCALENDAR

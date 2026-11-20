@@ -154,7 +154,21 @@ The price is that Tailscale support cannot look at the logs of these nodes; modC
 | [`Tailscale/modcraft-funnel.json`](Tailscale/modcraft-funnel.json) | modCraft on HTTPS 443, published through Funnel; the compose file's default | [Mac 9.2](https://mutschler.dev/apple/mac-mini-gitea-modcraft/#92-build-and-start-modcraft-and-its-sidecar) |
 | [`Tailscale/modcraft-serve.json`](Tailscale/modcraft-serve.json) | The same without Funnel, for a modCraft that only the tailnet can reach | [Mac 9.5](https://mutschler.dev/apple/mac-mini-gitea-modcraft/#95-serve-instead-of-funnel) |
 
+## Calendar
+
+My restore drills and regular maintenance as recurring all-day events, each with a reminder at 09:00, a checklist with the passing result of every drill, and links to the guide sections.
+Overview: [My backup strategy](https://mutschler.dev/stuff/backup/).
+
+| File | Purpose | Guide |
+|---|---|---|
+| [`Calendar/backup-drills-and-maintenance.ics`](Calendar/backup-drills-and-maintenance.ics) | Monthly checks (2nd Saturday); quarterly restore drills for the Wyse and Home Assistant (1st Saturday of March, June, September and December) and for Gitea (3rd Saturday), quarterly updates (last Saturday); yearly drills for the Wyse and Home Assistant (January) and the Mac mini (July) | [Wyse 10.4 to 10.6](https://mutschler.dev/linux/wyse-ubuntu-nextcloud-aio/#105-restore-drills), [Mac 10.4 to 10.7](https://mutschler.dev/apple/mac-mini-gitea-modcraft/#104-restore-drills) |
+
+### After a change
+
+- Import the file once: in Calendar on the Mac, **File → Import**, and pick a calendar of its own, e.g. "Backups", so that a later version can replace it by deleting that calendar and importing again.
+- On the iPhone, the events arrive through iCloud if that calendar is an iCloud calendar.
+
 ## Files of older guides
 
-Some older posts on mutschler.dev, such as [My backup strategy](https://mutschler.dev/stuff/backup/) and the post-installation guides for Ubuntu, Pop!_OS and Debian, refer to files that are no longer here, for example the Docker Compose and BTRBK files of my former server Simba and my restic and BTRFS maintenance scripts.
+Some older posts on mutschler.dev, such as [My backup strategy (2022)](https://mutschler.dev/stuff/backup_old/) and the post-installation guides for Ubuntu, Pop!_OS and Debian, refer to files that are no longer here, for example the Docker Compose and BTRBK files of my former Lenovo server and my restic and BTRFS maintenance scripts.
 They remain in the [Git history](https://github.com/wmutschl/scripts/commits/main/).
