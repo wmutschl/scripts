@@ -33,6 +33,9 @@ services:
       - TS_NO_LOGS_NO_SUPPORT=true # no client-log upload to Tailscale (see ../README.md)
       # Userspace networking: no /dev/net/tun, no NET_ADMIN/NET_RAW.
       - TS_USERSPACE=true
+      # No port mapping: the container's gateway is the Docker bridge, not the router,
+      # so its NAT-PMP, PCP and UPnP requests would only end up in the host's UFW log
+      - TS_DISABLE_PORTMAPPER=1
     security_opt:
       - no-new-privileges:true
     volumes:

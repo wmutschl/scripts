@@ -1,0 +1,253 @@
+#!/bin/bash
+# Dell Wyse 5070 (hostname dell-wyse): is it safe to reboot right now?
+#
+#   dell-wyse-reboot-check && sudo systemctl reboot
+#
+# Looks for anything that a reboot would interrupt: BTRBK snapshots and send/receive, the
+# off-site rsync, AIO's daily run with its Borg backup, Borg locks, running Nextcloud
+# containers, a Home Assistant upload, BTRFS scrub and balance, apt and dpkg.
+# It also checks the boot chain: the initrd of the kernel that boots next must open the SSD
+# and let you in over SSH (guide sections 3.3 and 5.7).
+# Exits 0 only when the reboot can start right away, and 1 otherwise.
+# "note" lines are hints that do not block the reboot.
+# Installed in /usr/local/sbin with the other dell-wyse-* scripts (guide section 7); asks for sudo itself.
+set -uo pipefail
+
+[ "$(id -u)" = 0 ] || exec sudo "$0" "$@"
+
+# Note a timer or AIO's daily backup that starts within this many seconds
+SOON=1800
+# AIO's own data in its mastercontainer volume, /mnt/docker-aio-config/data inside the container
+AIO_DATA=/var/lib/docker/volumes/nextcloud_aio_mastercontainer/_data/data
+
+blocked=0
+ok() { printf '  [ ok ]  %s\n' "$1"; }
+note() { printf '  [note]  %s\n' "$1"; }
+busy() { printf '  [BUSY]  %s\n' "$1"; blocked=1; }
+detail() { sed 's/^/            /' <<<"$1"; }
+
+printf 'Is the Wyse idle? It is %s.\n\n' "$(date '+%a %d %b %H:%M %Z')"
+
+# 1. systemd jobs: a running oneshot service is "activating".
+#    dell-wyse-alive runs for a second every five minutes, so it is left out.
+units=$(systemctl list-units 'dell-wyse-*' 'apt-daily*' fstrim.service --type=service \
+  --state=activating,deactivating --no-legend --plain |
+  awk '$1 != "dell-wyse-alive.service" { print $1 }')
+if [ -n "$units" ]; then
+  busy "systemd jobs are running:"
+  detail "$units"
+else
+  ok "no dell-wyse, apt or fstrim job is running"
+fi
+
+# 2. Processes behind the jobs, including ones started by hand.
+#    rsync also runs in the Nextcloud container while it installs an update.
+procs=$(pgrep -a -x 'btrbk|btrfs|rsync|borg')
+if [ -n "$procs" ]; then
+  busy "btrbk, btrfs, rsync or borg is running:"
+  detail "$procs"
+else
+  ok "no btrbk, btrfs, rsync or borg process"
+fi
+
+pkgs=$({ pgrep -a -x 'apt|apt-get|aptitude|dpkg'; pgrep -a -f '^/usr/bin/python3 /usr/bin/unattended-upgrade'; })
+if [ -n "$pkgs" ]; then
+  busy "the package manager is running:"
+  detail "$pkgs"
+else
+  ok "apt, dpkg and unattended-upgrades are idle"
+fi
+# A kernel or initrd update that failed halfway leaves its package unfinished
+audit=$(dpkg --audit 2>&1)
+if [ -n "$audit" ]; then
+  busy "dpkg left packages unfinished (finish them with 'sudo dpkg --configure -a'):"
+  detail "$audit"
+fi
+
+# 3. AIO. Its daily run updates the mastercontainer through nextcloud-aio-watchtower, pulls
+#    images, runs nextcloud-aio-borgbackup, and starts and updates the containers again.
+#    AIO creates daily_backup_running when the run starts and deletes it once the containers
+#    are started; daily-backup.sh then still waits for Nextcloud to come up.
+#    A run cut off by a reboot starts again after the boot, because the file stays.
+if [ -e "$AIO_DATA/daily_backup_running" ] || pgrep -f '/daily-backup\.sh' >/dev/null; then
+  busy "AIO's daily run is in progress (update, backup, restart of the containers)"
+fi
+aio=
+if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+  [ -d "$AIO_DATA" ] || note "$AIO_DATA does not exist, so AIO's daily run could not be checked"
+  running=$(docker ps --format '{{.Names}}  ({{.Status}})')
+  aio=$(grep -E '^nextcloud-aio-(borgbackup|watchtower) ' <<<"$running")
+  if [ -n "$aio" ]; then
+    busy "AIO's backup or update container is running:"
+    detail "$aio"
+  else
+    ok "AIO's backup and update containers are not running"
+  fi
+  # occ runs in the Nextcloud container for upgrades, file scans and repairs.
+  # Its workers, such as AIO's permanent taskprocessing:worker, are left out.
+  occ=$(pgrep -a php | grep -E '[ /]occ( |$)' | grep -Ev '[ /]occ [a-z_-]+:worker( |$)')
+  if [ -n "$occ" ]; then
+    busy "occ is running in the Nextcloud container; let it finish before you stop the containers:"
+    detail "$occ"
+  fi
+  # AIO stops its containers in order. They then stay stopped across the reboot
+  # (restart policy unless-stopped) until you start them again in AIO.
+  nc=$(grep '^nextcloud-aio-' <<<"$running" | grep -Ev '^nextcloud-aio-(mastercontainer|borgbackup|watchtower) ')
+  if [ -n "$nc" ]; then
+    busy "Nextcloud is running: stop the containers in the AIO interface, then run this again:"
+    detail "$nc"
+  else
+    ok "Nextcloud's containers are stopped"
+  fi
+else
+  note "Docker is not running, so AIO could not be checked"
+fi
+
+# The Borg repository's locks, as dell-wyse-offsite checks them. Without a borg process or AIO's
+# backup container, a lock is left over from an interrupted run: a reboot changes nothing about
+# it, but dell-wyse-offsite waits four hours for it and then fails.
+repo=/mnt/backup/borg
+locks=$(ls -d "$repo"/lock.* 2>/dev/null)
+if [ -z "$locks" ]; then
+  ok "no Borg lock in $repo"
+elif pgrep -x borg >/dev/null || grep -q borgbackup <<<"$aio"; then
+  busy "Borg holds a lock on its repository:"
+  detail "$locks"
+else
+  note "the Borg repository has a stale lock, held by no borg process:"
+  detail "$locks"
+fi
+
+# 4. Home Assistant writes its daily backup to the Samba share; a reboot cuts it off
+#    and can leave a truncated file behind.
+recent=$(find /srv/ha-backups -type f -mmin -2 -printf '%f\n' 2>/dev/null)
+if [ -n "$recent" ]; then
+  busy "Home Assistant is writing a backup to the share:"
+  detail "$recent"
+else
+  ok "no Home Assistant upload in progress"
+fi
+
+# 5. BTRFS scrub and balance on the three filesystems
+for fs in / /mnt/btrbk /mnt/backup; do
+  if ! mountpoint -q "$fs"; then
+    note "$fs is not mounted"
+    continue
+  fi
+  state=
+  if btrfs scrub status "$fs" 2>/dev/null | grep -q '^Status:[[:space:]]*running'; then
+    busy "a scrub is running on $fs ('sudo btrfs scrub status $fs')"
+    state=1
+  fi
+  if btrfs balance status "$fs" 2>/dev/null | grep -q 'is running'; then
+    busy "a balance is running on $fs ('sudo btrfs balance status $fs')"
+    state=1
+  fi
+  [ -n "$state" ] || ok "no scrub or balance on $fs"
+done
+
+# 6. SMART self-tests. A reboot aborts them, which does no harm, but smartd starts an aborted
+#    test again only at its next scheduled time. -n standby keeps smartctl from waking a
+#    sleeping disk, except HDD 2, whose USB bridge cannot report standby (see smartd.conf).
+tests=
+for d in /dev/disk/by-id/ata-* /dev/disk/by-id/usb-*; do
+  [ -e "$d" ] || continue
+  case $d in *-part*) continue ;; esac
+  out=$(smartctl -n standby -c "$d" 2>/dev/null | grep -i -A1 'self-test routine in progress')
+  [ -z "$out" ] || tests+="$d"$'\n'"$out"$'\n'
+done
+if [ -n "$tests" ]; then
+  note "a SMART self-test is running; a reboot aborts it (start it again with 'sudo smartctl -t short|long DISK'):"
+  detail "${tests%$'\n'}"
+else
+  ok "no SMART self-test in progress"
+fi
+
+# 7. The boot chain. If the initrd can't open the SSD or let you in over SSH, the Wyse waits at a
+#    console prompt (guide sections 3.3 and 5.7). GRUB starts the newest installed kernel.
+kver=$(linux-version list | linux-version sort | tail -n 1)
+img=/boot/initrd.img-$kver
+[ "$kver" = "$(uname -r)" ] || note "the reboot starts kernel $kver; $(uname -r) is running"
+problems=
+if [ -s "$img" ]; then
+  list=$(lsinitrd "$img" 2>/dev/null)
+  for f in usr/sbin/sshd usr/lib/systemd/systemd-networkd root/.ssh/authorized_keys; do
+    grep -q " $f\$" <<<"$list" || problems+="no $f"$'\n'
+  done
+  # The NIC's driver r8169 and its PHY driver realtek, without which r8169 refuses to start
+  for l in /sys/class/net/enp1s0/device/driver/module /sys/class/net/enp1s0/phydev/driver/module; do
+    [ -e "$l" ] || continue
+    m=$(basename "$(readlink -f "$l")")
+    grep -Eq "/$m\.ko(\.[a-z]+)?\$" <<<"$list" || problems+="no kernel module $m"$'\n'
+  done
+  lsinitrd -f etc/crypttab "$img" 2>/dev/null | grep -q '^wyse-system ' ||
+    problems+="no wyse-system line in etc/crypttab"$'\n'
+  lsinitrd -f root/.ssh/authorized_keys "$img" 2>/dev/null | cmp -s - /etc/dracut-sshd/authorized_keys ||
+    problems+="root/.ssh/authorized_keys differs from /etc/dracut-sshd/authorized_keys"$'\n'
+else
+  problems="$img is missing or empty"$'\n'
+fi
+if [ -n "$problems" ]; then
+  busy "the initrd of $kver would break the SSH unlock (rebuild it with 'sudo update-initramfs -u -k $kver'):"
+  detail "${problems%$'\n'}"
+else
+  ok "the initrd of $kver has sshd, networkd, the NIC drivers, your SSH keys and wyse-system"
+fi
+# A broken fstab line without nofail ends the boot in emergency mode, which has no SSH either.
+# findmnt ignores nofail, so a detached HDD 2 (LABEL=wyse-borg) shows up here too.
+if ! verify=$(findmnt --verify 2>&1); then
+  note "findmnt --verify reports errors in /etc/fstab:"
+  detail "$verify"
+fi
+
+# 8. Jobs that start soon. systemd's Persistent timers catch up after the boot, so they do not block.
+#    The hourly snapshot is left out, because it only takes seconds.
+now=$(date +%s)
+for t in $(systemctl list-units 'dell-wyse-*.timer' --no-legend --plain | awk '{ print $1 }'); do
+  case $t in dell-wyse-alive.timer | dell-wyse-btrbk-snapshot.timer) continue ;; esac
+  # --timestamp=unix prints "@SECONDS", so no date needs parsing
+  next=$(systemctl show "$t" -P NextElapseUSecRealtime --timestamp=unix)
+  next=${next#@}
+  if ! [[ $next =~ ^[0-9]+$ ]]; then
+    note "could not read when $t fires next"
+    continue
+  fi
+  left=$((next - now))
+  if [ "$left" -ge 0 ] && [ "$left" -le "$SOON" ]; then
+    note "$t fires in $((left / 60)) min"
+  fi
+done
+# AIO's daily backup does not catch up: it starts only at its exact minute and skips the day
+# if the Wyse is down then. The time is HH:MM in UTC (the mastercontainer runs with TZ=Etc/UTC),
+# and a Unix day starts at 00:00 UTC.
+aio_time=$(head -n 1 "$AIO_DATA/daily_backup_time" 2>/dev/null)
+if [[ $aio_time =~ ^([01][0-9]|2[0-3]):([0-5][0-9])$ ]]; then
+  aio_next=$((now - now % 86400 + 10#${BASH_REMATCH[1]} * 3600 + 10#${BASH_REMATCH[2]} * 60))
+  [ "$aio_next" -ge "$now" ] || aio_next=$((aio_next + 86400))
+  left=$((aio_next - now))
+  if [ "$left" -le "$SOON" ]; then
+    note "AIO's daily backup starts in $((left / 60)) min ($aio_time UTC); if the Wyse is still down then, AIO skips it"
+  fi
+elif [ -d "$AIO_DATA" ]; then
+  note "AIO has no daily backup time in $AIO_DATA/daily_backup_time"
+fi
+
+# 9. Failed units are worth a look before the reboot clears them
+failed=$(systemctl --failed --no-legend --plain | awk '{ print $1 }')
+if [ -n "$failed" ]; then
+  note "failed units (look at them before the reboot clears them):"
+  detail "$failed"
+fi
+
+echo
+if [ "$blocked" = 1 ]; then
+  echo "NOT safe to reboot yet: clear the BUSY lines above, then run this again."
+  echo "  progress of a send:  sudo dell-wyse-btrbk-progress"
+  echo "  follow a job:        sudo journalctl -fu dell-wyse-btrbk-send -u dell-wyse-offsite"
+  exit 1
+fi
+echo "Safe to reboot:"
+echo "  1. Have the SSD passphrase ready and a machine on the LAN for the unlock."
+echo "  2. sync && sudo systemctl reboot"
+echo "  3. From the Mac: ssh -t dell-wyse-unlock systemd-tty-ask-password-agent"
+echo "  4. Start the containers again in the AIO interface (guide section 9.6); they stay stopped across the reboot."
