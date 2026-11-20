@@ -1,0 +1,40 @@
+#!/bin/sh
+# Apple Mac mini M4 Pro (hostname mac-mini): report a job's result to healthchecks.io.
+#
+#   mac-mini-hc-ping NAME              success ping
+#   mac-mini-hc-ping NAME start        start signal, so healthchecks.io measures the run time
+#   mac-mini-hc-ping NAME fail [TEXT]  failure ping; TEXT, or else the last 40 lines
+#                                       of ~/Library/Logs/mac-mini-NAME.log, appears in the alert
+#
+# NAME becomes the check's slug, prefixed with mac-mini- unless it already is.
+# A check is created by its first ping (?create=1);
+# set its period and grace time in the dashboard afterwards.
+# Reads HC_PING_KEY from ~/.config/mac-mini/host.env (or the file in MAC_MINI_HOST_ENV)
+# and does nothing while it is empty.
+set -u
+
+[ $# -ge 1 ] || { echo "Usage: $0 NAME [start | fail [TEXT]]" >&2; exit 2; }
+host_env=${MAC_MINI_HOST_ENV:-$HOME/.config/mac-mini/host.env}
+HC_PING_KEY=
+# shellcheck source=/dev/null
+[ -r "$host_env" ] && . "$host_env"
+if [ -z "$HC_PING_KEY" ]; then
+  echo "HC_PING_KEY is empty in $host_env; not pinging" >&2
+  exit 0
+fi
+
+case $1 in
+  mac-mini-*) slug=$1 ;;
+  *) slug=mac-mini-$1 ;;
+esac
+url="https://hc-ping.com/$HC_PING_KEY/$slug"
+body=
+case ${2:-} in
+  start) url="$url/start" ;;
+  fail)
+    url="$url/fail"
+    body=${3:-$(tail -n 40 "$HOME/Library/Logs/$slug.log" 2>&1)}
+    ;;
+esac
+
+printf '%s' "$body" | curl -fsS -m 10 --retry 5 -o /dev/null --data-binary @- "$url?create=1"

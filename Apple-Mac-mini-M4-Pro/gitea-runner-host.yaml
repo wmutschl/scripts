@@ -1,0 +1,31 @@
+# Apple Mac mini M4 Pro (hostname mac-mini): configuration of the optional macOS host runner
+# (Homebrew formula gitea-runner, formerly act_runner).
+# Copy to ~/.config/gitea-runner/config.yaml; launchd starts the runner with
+# Library/LaunchAgents/local.mac-mini-gitea-runner.plist, in that folder.
+# Its jobs run directly on macOS, as your user and with access to all your files:
+# register it for your own repositories only, never for mirrors or other people's code.
+
+log:
+  level: info
+
+runner:
+  # Relative to the working directory ~/.config/gitea-runner; holds the runner's credentials
+  file: .runner
+  capacity: 1
+  timeout: 3h
+  # A label of its own, so workflows written for GitHub's macos-latest or ubuntu-latest never land on the bare Mac.
+  # register ignores --labels as long as the labels are set here.
+  labels:
+    - "macos-arm64:host"
+  # setup-* actions keep their downloads between jobs
+  tool_cache_mode: shared
+
+cache:
+  # Off: the cache server would listen on all of the Mac's interfaces, the LAN included (with token
+  # authentication). To use actions/cache in macOS jobs, set it to true; jobs then reach it on loopback.
+  enabled: false
+  host: 127.0.0.1
+
+host:
+  # Empty: the default ~/.cache/act, also the runner's download cache of actions
+  workdir_parent: ""

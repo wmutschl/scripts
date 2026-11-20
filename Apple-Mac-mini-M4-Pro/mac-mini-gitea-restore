@@ -1,0 +1,108 @@
+#!/bin/bash
+# Apple Mac mini M4 Pro (hostname mac-mini): restore Gitea from a run of mac-mini-gitea-backup
+# into a fresh installation: empty volumes, Gitea never started.
+#
+#   mac-mini-gitea-restore ~/Backups/gitea/gitea-YYYYMMDD-HHMMSS
+#
+# Loads gitea-db.pgdump with pg_restore, unpacks gitea-dump.tar into Gitea's two volumes,
+# starts Gitea and runs `gitea admin regenerate hooks` and `gitea doctor check --all`.
+# It refuses to touch a database with tables or volumes with app.ini or repositories in them,
+# so it never overwrites a running instance, and it refuses a .env whose GITEA_SECRET_KEY differs from the
+# backup's, because Gitea could not decrypt 2FA seeds and Actions secrets with another key.
+# To start over on purpose, remove the containers and the three volumes first:
+#   docker compose stop gitea-runner gitea gitea-db && docker compose rm -f gitea-runner gitea gitea-db
+#   docker volume rm gitea-db-data gitea-data gitea-config
+# Afterwards, start the container runner with `docker compose up -d gitea-runner`: it reconnects without a new
+# registration if its volume gitea-runner-data survived; otherwise register it again (GITEA_RUNNER_REGISTRATION_TOKEN)
+# and delete the old, offline runner in Gitea.
+# The restored Gitea syncs its pull and push mirrors; push mirrors force-push the backup's state.
+# For a restore drill on another computer, turn mirroring off first with a docker-compose.override.yml
+# next to the compose file that sets GITEA__mirror__ENABLED: "false" for the gitea service.
+
+PATH=$HOME/.orbstack/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin
+set -euo pipefail
+
+[ $# -eq 1 ] || { echo "Usage: $0 BACKUP_DIR" >&2; exit 2; }
+src=$(cd "$1" && pwd)
+for f in gitea-db.pgdump gitea-dump.tar; do
+  [ -s "$src/$f" ] || { echo "$src/$f is missing or empty" >&2; exit 1; }
+done
+here=$(cd "$(dirname "$0")" && pwd)
+cd "$here"
+compose() { docker compose --project-directory "$here" "$@"; }
+log() { echo "$(date '+%F %T') $*"; }
+
+# The SECRET_KEY in .env replaces the one in the restored app.ini at every start of Gitea, so they must match
+archive_key=$(tar -xOf "$src/gitea-dump.tar" app.ini 2>/dev/null | sed -n 's/^SECRET_KEY *= *//p' | head -n 1) || true
+env_key=$(sed -n 's/^GITEA_SECRET_KEY=//p' "$here/.env" 2>/dev/null | tail -n 1 | sed "s/^[\"']//; s/[\"']\$//") || true
+if [ -z "$archive_key" ]; then
+  echo "cannot read SECRET_KEY from app.ini in $src/gitea-dump.tar" >&2
+  exit 1
+fi
+if [ "$archive_key" != "$env_key" ]; then
+  echo "GITEA_SECRET_KEY in $here/.env does not match SECRET_KEY in the backup's app.ini" >&2
+  exit 1
+fi
+
+docker info >/dev/null 2>&1 || { echo "Docker (OrbStack) is not running" >&2; exit 1; }
+if [ "$(docker inspect -f '{{.State.Running}}' gitea 2>/dev/null)" = true ]; then
+  echo "gitea is running; this restores only into a fresh installation" >&2
+  exit 1
+fi
+
+log "starting gitea-db"
+compose up -d --wait gitea-db
+tables=$(compose exec -T gitea-db psql -U gitea -d gitea -tAc \
+  "select count(*) from information_schema.tables where table_schema = 'public'")
+if [ "$tables" != 0 ]; then
+  echo "the database already has $tables tables; this restores only into a fresh installation" >&2
+  exit 1
+fi
+
+log "unpacking gitea-dump.tar into the volumes gitea-data and gitea-config"
+# A one-off container of the gitea service (uid 1000, both volumes), without its usual start script.
+# The archive is unpacked into a staging folder on the data volume itself, so moving it costs no space.
+# Layout of gitea dump in the rootless image: repos/ is [repository] ROOT, data/lfs is [lfs] PATH,
+# data/attachments is [attachment] PATH, everything else under data/ belongs to APP_DATA_PATH.
+# shellcheck disable=SC2016 # the script runs in the container's sh, unexpanded here
+compose run --rm --no-deps -T --entrypoint sh gitea -euc '
+  if [ -e /etc/gitea/app.ini ] || [ -n "$(ls -A /var/lib/gitea/git/repositories 2>/dev/null)" ]; then
+    echo "the volumes already hold app.ini or repositories; this restores only into a fresh installation" >&2
+    exit 1
+  fi
+  stage=/var/lib/gitea/.restore
+  rm -rf "$stage"
+  mkdir -p "$stage"
+  tar -xf - -C "$stage"
+  mv "$stage/app.ini" /etc/gitea/app.ini
+  mkdir -p /var/lib/gitea/git
+  if [ -d "$stage/repos" ]; then
+    rm -rf /var/lib/gitea/git/repositories
+    mv "$stage/repos" /var/lib/gitea/git/repositories
+  fi
+  if [ -d "$stage/data/lfs" ]; then
+    rm -rf /var/lib/gitea/git/lfs
+    mv "$stage/data/lfs" /var/lib/gitea/git/lfs
+  fi
+  if [ -d "$stage/data/attachments" ]; then
+    mkdir -p /var/lib/gitea/data
+    rm -rf /var/lib/gitea/data/attachments
+    mv "$stage/data/attachments" /var/lib/gitea/data/attachments
+  fi
+  if [ -d "$stage/data" ]; then
+    cp -a "$stage/data/." /var/lib/gitea/
+  fi
+  rm -rf "$stage"
+' <"$src/gitea-dump.tar"
+
+log "loading gitea-db.pgdump"
+compose exec -T gitea-db pg_restore -U gitea -d gitea --no-owner --exit-on-error <"$src/gitea-db.pgdump"
+
+log "starting gitea"
+compose up -d --wait gitea
+log "regenerating the repositories' git hooks"
+docker exec gitea gitea admin regenerate hooks
+log "gitea doctor check --all"
+docker exec gitea gitea doctor check --all || log "doctor reported problems; see above"
+log "restored from $src"
+log "start the container runner with: docker compose up -d gitea-runner"

@@ -1,0 +1,226 @@
+# Apple Mac mini M4 Pro (hostname mac-mini), macOS with OrbStack
+# Gitea with PostgreSQL and an Actions runner, plus the Tailscale sidecars of Gitea and modCraft
+#
+#   cd ~/scripts/Apple-Mac-mini-M4-Pro
+#   docker compose up -d
+#
+# modCraft itself runs from its own repository (~/modCraft/website/compose.yaml);
+# only its Tailscale sidecar lives here.
+# Nothing is published on the Mac or the LAN: Gitea is reached through Tailscale Serve only.
+name: mac-mini
+
+services:
+  # ---------------------------------------------------------------------------
+  # Gitea
+  # ---------------------------------------------------------------------------
+  # The sidecar is the gitea node in the tailnet. Serve terminates HTTPS on 443 with the
+  # tailnet certificate and proxies to http://gitea:3000; TCP 22 is forwarded to Gitea's
+  # built-in SSH server on gitea:2222 (../Tailscale/gitea-serve.json).
+  # Gitea does not share the sidecar's network namespace, so in userspace mode every other
+  # tailnet port of this node is refused: nothing else listens in that namespace.
+  gitea-tailscale:
+    image: ghcr.io/tailscale/tailscale:latest
+    container_name: gitea-tailscale
+    restart: unless-stopped
+    init: true
+    environment:
+      - TS_AUTHKEY=${TAILSCALE_OAUTH_KEY}?ephemeral=false
+      - TS_HOSTNAME=${GITEA_TAILSCALE_HOSTNAME:-gitea}
+      # Own tag without the funnel attribute: Gitea can never be published to the internet by accident
+      - TS_EXTRA_ARGS=--advertise-tags=tag:gitea
+      - TS_SERVE_CONFIG=/config/gitea-serve.json
+      - TS_STATE_DIR=/var/lib/tailscale
+      # Log in with the OAuth secret only while the node has no state; otherwise every restart mints a new key
+      - TS_AUTH_ONCE=true
+      - TS_NO_LOGS_NO_SUPPORT=true # no client-log upload to Tailscale
+      # Userspace networking: no /dev/net/tun, no NET_ADMIN/NET_RAW.
+      - TS_USERSPACE=true
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - gitea-tailscale-data:/var/lib/tailscale
+      # The repository's shared Tailscale/ folder, read-only (a directory mount). containerboot watches it and
+      # re-applies the serve configuration when it changes; whether OrbStack passes macOS-side edits on as file
+      # events is undocumented, so restart the sidecar after editing a serve file.
+      - ../Tailscale:/config:ro
+    networks:
+      - gitea
+
+  gitea:
+    # Pinned: 28.x maintenance releases can migrate the database, so update deliberately, after a backup
+    image: docker.gitea.com/gitea:28.4.0-rootless
+    container_name: gitea
+    # always: Gitea also comes back when OrbStack starts after the backup was cut off while Gitea was stopped.
+    # To keep it down across an OrbStack restart, remove the container (docker compose rm -sf gitea).
+    restart: always
+    depends_on:
+      gitea-db:
+        condition: service_healthy
+    environment:
+      # The rootless image writes these into /etc/gitea/app.ini at every start and overrides manual edits there.
+      # Keys are case-sensitive; a dot in a section name is written _0x2E_.
+      TZ: ${TIMEZONE:-Europe/Berlin}
+      GITEA__database__DB_TYPE: postgres
+      GITEA__database__HOST: gitea-db:5432
+      GITEA__database__NAME: gitea
+      GITEA__database__USER: gitea
+      GITEA__database__PASSWD: ${GITEA_DB_PASSWORD:?Set GITEA_DB_PASSWORD in .env}
+      # The domain is the host of ROOT_URL; [server] DOMAIN no longer exists in Gitea 28
+      GITEA__server__ROOT_URL: https://${GITEA_DOMAIN:?Set GITEA_DOMAIN in .env}/
+      GITEA__server__SSH_DOMAIN: ${GITEA_DOMAIN}
+      GITEA__server__SSH_PORT: 22 # shown in clone URLs; the sidecar forwards tailnet port 22
+      GITEA__server__SSH_LISTEN_PORT: 2222 # the built-in SSH server inside the container
+      GITEA__server__LFS_START_SERVER: true
+      # Without INSTALL_LOCK the web installer would run; with it, SECRET_KEY must be set here, or Gitea silently
+      # falls back to a public built-in key for 2FA seeds, Actions secrets and the credentials of pending migrations.
+      # Never change SECRET_KEY afterwards.
+      GITEA__security__INSTALL_LOCK: true
+      GITEA__security__SECRET_KEY: ${GITEA_SECRET_KEY:?Set GITEA_SECRET_KEY in .env}
+      GITEA__security__INTERNAL_TOKEN: ${GITEA_INTERNAL_TOKEN:?Set GITEA_INTERNAL_TOKEN in .env}
+      # Port 3000 is reachable only from the sidecar (network gitea) and from the runner and its jobs (gitea-ci),
+      # so their X-Forwarded-For can be trusted; Serve sets it to the tailnet address of the client.
+      GITEA__security__REVERSE_PROXY_TRUSTED_PROXIES: "*"
+      # The rootless image's first-start template writes false; the first account registered on the web would become admin
+      GITEA__service__DISABLE_REGISTRATION: true
+      GITEA__service__REQUIRE_SIGNIN_VIEW: true
+      GITEA__repository__DEFAULT_PRIVATE: private
+      # Gitea's default for new mirrors, written out: no Actions unit, so a mirror sync can never start a workflow
+      GITEA__repository__DEFAULT_MIRROR_REPO_UNITS: repo.code,repo.releases,repo.issues,repo.wiki,repo.projects,repo.packages
+      # Only .gitea/workflows runs; a mirrored repository's .github/workflows never does
+      GITEA__actions__WORKFLOW_DIRS: .gitea/workflows
+    volumes:
+      - gitea-data:/var/lib/gitea # repositories, LFS, attachments, packages, Actions logs, SSH host keys
+      - gitea-config:/etc/gitea # app.ini, including the secrets Gitea generates itself
+    healthcheck:
+      # Status only, for `docker compose ps`, the runner's start, `up --wait` (guide, restore script) and the backup,
+      # which does not stop an unhealthy Gitea. Docker restarts nothing on failure.
+      # A long database migration after an update keeps it unhealthy for a while.
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost:3000/api/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 2m
+    stop_grace_period: 1m # Gitea's graceful shutdown waits up to 60 s
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - gitea
+      - gitea-ci
+      - gitea-db
+
+  gitea-db:
+    # Pinned to the major version: a new major needs pg_upgrade or a dump and restore.
+    # PostgreSQL 18 keeps its data in /var/lib/postgresql/18/docker and expects the volume at /var/lib/postgresql.
+    image: postgres:18-alpine
+    container_name: gitea-db
+    restart: unless-stopped
+    environment:
+      # Used only when the data directory is created; changing the password later needs ALTER ROLE as well
+      POSTGRES_USER: gitea
+      POSTGRES_PASSWORD: ${GITEA_DB_PASSWORD}
+      POSTGRES_DB: gitea
+    volumes:
+      - gitea-db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gitea -d gitea"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    stop_grace_period: 2m
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - gitea-db
+
+  # The runner registers once against http://gitea:3000, and its jobs use that address too:
+  # job containers join the gitea-ci network (gitea-runner.yaml), so checkout, artifacts and the
+  # cache work without the Mac's own Tailscale. Jobs get no Docker socket (docker_host "-").
+  # The registration token is needed only while /data/.runner does not exist yet.
+  gitea-runner:
+    # Pinned: the runner (formerly act_runner) had three breaking major releases in 2026
+    image: docker.gitea.com/runner:6.0.0
+    container_name: gitea-runner
+    restart: unless-stopped
+    depends_on:
+      gitea:
+        condition: service_healthy
+    environment:
+      CONFIG_FILE: /config.yaml
+      GITEA_INSTANCE_URL: http://gitea:3000
+      GITEA_RUNNER_REGISTRATION_TOKEN: ${GITEA_RUNNER_REGISTRATION_TOKEN:-}
+      # The runner's name in Gitea. Do not set `hostname:` instead: the runner finds its own container by its
+      # hostname, which must stay the container ID.
+      GITEA_RUNNER_NAME: mac-mini-docker
+    volumes:
+      - ./gitea-runner.yaml:/config.yaml:ro
+      - gitea-runner-data:/data # .runner (its credentials), the cache and downloaded actions
+      # OrbStack's Docker engine, for the job containers. Whoever controls it is root in OrbStack's VM
+      # and can read every volume, so no job gets this socket.
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - gitea-ci
+
+  # ---------------------------------------------------------------------------
+  # modCraft (Dynare model builder), until it moves to its own VPS
+  # ---------------------------------------------------------------------------
+  # The app stack (Caddy, API, worker) lives in its own repo and is started from there with its
+  # unchanged compose.yaml, which publishes Caddy on 127.0.0.1:8080 only. This sidecar is the
+  # "existing HTTPS reverse proxy" from modCraft's website/deployment/README.md: Serve terminates
+  # HTTPS with the tailnet certificate and forwards to that loopback port via OrbStack's
+  # host.docker.internal, so the two stacks start and update independently.
+  # Serve keeps the original Host header, which is why modCraft's .env must list this node's
+  # MagicDNS name in MODCRAFT_SITE_ADDRESS.
+  modcraft-tailscale:
+    image: ghcr.io/tailscale/tailscale:latest
+    container_name: modcraft-tailscale
+    restart: unless-stopped
+    init: true
+    environment:
+      - TS_AUTHKEY=${TAILSCALE_OAUTH_KEY}?ephemeral=false
+      - TS_HOSTNAME=${MODCRAFT_TAILSCALE_HOSTNAME:-modcraft}
+      - TS_EXTRA_ARGS=--advertise-tags=tag:container
+      # modcraft-funnel.json publishes modCraft through Funnel; modcraft-serve.json keeps it tailnet-only (.env)
+      - TS_SERVE_CONFIG=/config/${MODCRAFT_SERVE_CONFIG:-modcraft-funnel.json}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_AUTH_ONCE=true
+      - TS_NO_LOGS_NO_SUPPORT=true # no client-log upload to Tailscale; modCraft's privacy policy relies on it
+      # Userspace networking: no /dev/net/tun, no NET_ADMIN/NET_RAW. Nothing else shares this
+      # namespace, so the "every tailnet port is forwarded to localhost" behavior of this mode exposes nothing.
+      - TS_USERSPACE=true
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - modcraft-tailscale-data:/var/lib/tailscale
+      - ../Tailscale:/config:ro
+    networks:
+      - modcraft-tailscale
+
+volumes:
+  gitea-tailscale-data:
+    name: gitea-tailscale-data
+  gitea-data:
+    name: gitea-data
+  gitea-config:
+    name: gitea-config
+  gitea-db-data:
+    name: gitea-db-data
+  gitea-runner-data:
+    name: gitea-runner-data
+  modcraft-tailscale-data:
+    name: modcraft-tailscale-data
+
+networks:
+  # Sidecar and Gitea
+  gitea:
+    name: gitea
+  # Gitea, the runner and the job containers; not PostgreSQL
+  gitea-ci:
+    name: gitea-ci
+  # Gitea and PostgreSQL only, without a route out
+  gitea-db:
+    name: gitea-db
+    internal: true
+  # No published ports: modCraft is reached only through Tailscale Serve or Funnel
+  modcraft-tailscale:
+    name: modcraft-tailscale

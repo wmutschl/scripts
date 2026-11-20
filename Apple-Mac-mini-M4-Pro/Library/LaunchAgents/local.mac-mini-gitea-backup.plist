@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Apple Mac mini M4 Pro (hostname mac-mini): daily Gitea backup.
+     Installed as ~/Library/LaunchAgents/local.mac-mini-gitea-backup.plist; the paths assume the user wmutschl
+     and the scripts repository in ~/scripts, which is not a privacy-protected folder like ~/Documents. -->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>local.mac-mini-gitea-backup</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Users/wmutschl/scripts/Apple-Mac-mini-M4-Pro/mac-mini-gitea-backup</string>
+	</array>
+	<!-- Daily at 02:30; a run missed while the Mac slept happens on wake -->
+	<key>StartCalendarInterval</key>
+	<dict>
+		<key>Hour</key>
+		<integer>2</integer>
+		<key>Minute</key>
+		<integer>30</integer>
+	</dict>
+	<key>ProcessType</key>
+	<string>Background</string>
+	<key>StandardOutPath</key>
+	<string>/Users/wmutschl/Library/Logs/mac-mini-gitea-backup.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/wmutschl/Library/Logs/mac-mini-gitea-backup.log</string>
+</dict>
+</plist>

@@ -1,0 +1,237 @@
+#!/bin/bash
+# Create Gitea pull mirrors of all repositories of a GitHub user or organization, or a GitLab user or group.
+# Existing repositories in Gitea are skipped, so running it again only adds what is new.
+#
+#   gitea-mirror [options] github NAME
+#   gitea-mirror [options] gitlab NAME
+#
+# Options:
+#   --to OWNER       Gitea user or organization that receives the mirrors (default: github or gitlab);
+#                    create it in Gitea first
+#   --include-forks  also mirror forks
+#   --skip-archived  skip archived repositories
+#   --wiki           also mirror wikis that exist upstream (a wiki that disappears later breaks the sync)
+#   --lfs            also mirror Git LFS objects (counts against GitHub's LFS bandwidth)
+#   --interval DUR   sync interval as a Go duration, e.g. 8h or 30m, at least 10m; 0 stops the periodic syncs
+#                    after the first one (default 8h)
+#   --match REGEX    only repositories whose name matches this extended regular expression
+#   --dry-run        only list what would be mirrored
+#
+# Environment:
+#   GITEA_URL     e.g. https://gitea.tailnet-name.ts.net; default https://GITEA_DOMAIN from the .env next to this script
+#   GITEA_TOKEN   Gitea access token with the scopes write:repository and read:user (plus read:organization for --to ORG)
+#   GITHUB_TOKEN  read-only GitHub token (fine-grained: Contents read-only); required for private repositories,
+#                 recommended for public ones, as GitHub throttles anonymous clones
+#   GITLAB_URL    default https://gitlab.com
+#   GITLAB_TOKEN  GitLab token with read_api and read_repository
+# The upstream token is stored with every mirror, in plain text in its git config inside Gitea,
+# so use read-only tokens only. Mirrors of private repositories stay private in Gitea.
+
+set -uo pipefail
+
+usage() {
+  sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//' >&2
+  exit 2
+}
+
+to=
+forks=false
+archived=true
+wiki=false
+lfs=false
+interval=8h
+match=
+dry=false
+while [ $# -gt 0 ]; do
+  case $1 in
+    --to) to=${2:?--to needs an owner}; shift 2 ;;
+    --include-forks) forks=true; shift ;;
+    --skip-archived) archived=false; shift ;;
+    --wiki) wiki=true; shift ;;
+    --lfs) lfs=true; shift ;;
+    --interval) interval=${2:?--interval needs a duration}; shift 2 ;;
+    --match) match=${2:?--match needs a regular expression}; shift 2 ;;
+    --dry-run) dry=true; shift ;;
+    -h | --help) usage ;;
+    -*) echo "unknown option $1" >&2; usage ;;
+    *) break ;;
+  esac
+done
+[ $# -eq 2 ] || usage
+service=$1
+name=$2
+case $service in github | gitlab) ;; *) usage ;; esac
+[ -n "$to" ] || to=$service
+printf '%s\n' "$interval" | grep -Eq '^(0|([0-9]+(\.[0-9]+)?(ns|us|ms|s|m|h))+)$' ||
+  { echo "--interval must be a Go duration such as 8h or 30m, or 0" >&2; exit 2; }
+# Gitea refuses intervals below [mirror] MIN_INTERVAL (10m), but only after cloning the repository
+if [ "$interval" != 0 ]; then
+  seconds=$(printf '%s\n' "$interval" | awk '{
+    s = $0; t = 0
+    while (match(s, /^[0-9.]+(ns|us|ms|s|m|h)/)) {
+      tok = substr(s, 1, RLENGTH); s = substr(s, RLENGTH + 1)
+      n = tok; sub(/[a-z]+$/, "", n); u = substr(tok, length(n) + 1)
+      f = (u == "h") ? 3600 : (u == "m") ? 60 : (u == "s") ? 1 : (u == "ms") ? 0.001 : (u == "us") ? 0.000001 : 0.000000001
+      t += n * f
+    }
+    print t
+  }')
+  awk -v t="$seconds" 'BEGIN { exit !(t >= 600) }' ||
+    { echo "--interval must be at least 10m, or 0" >&2; exit 2; }
+fi
+
+here=$(cd "$(dirname "$0")" && pwd)
+if [ -z "${GITEA_URL:-}" ]; then
+  domain=$(sed -n 's/^GITEA_DOMAIN=//p' "$here/.env" 2>/dev/null | tail -n 1)
+  [ -n "$domain" ] || { echo "set GITEA_URL" >&2; exit 2; }
+  GITEA_URL=https://$domain
+fi
+GITEA_URL=${GITEA_URL%/}
+: "${GITEA_TOKEN:?set GITEA_TOKEN}"
+GITLAB_URL=${GITLAB_URL:-https://gitlab.com}
+GITLAB_URL=${GITLAB_URL%/}
+if [ "$service" = github ]; then upstream_token=${GITHUB_TOKEN:-}; else upstream_token=${GITLAB_TOKEN:-}; fi
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+# The tokens go to curl in header files inside the private temporary folder, not on the command line,
+# where other users of the machine could read them with ps
+printf 'Authorization: token %s\n' "$GITEA_TOKEN" >"$tmp/gitea.hdr"
+: >"$tmp/upstream.hdr"
+if [ -n "$upstream_token" ]; then
+  if [ "$service" = github ]; then
+    printf 'Authorization: Bearer %s\n' "$upstream_token" >"$tmp/upstream.hdr"
+  else
+    printf 'PRIVATE-TOKEN: %s\n' "$upstream_token" >"$tmp/upstream.hdr"
+  fi
+fi
+
+# HTTP helpers: the body goes to $tmp/body, the headers to $tmp/headers and the status to $code.
+# They must not run in a subshell, or $code is lost.
+code=
+call() {
+  code=$(curl -sS -D "$tmp/headers" -o "$tmp/body" -w '%{http_code}' "$@") || code=000
+}
+gitea() {
+  local method=$1 path=$2
+  shift 2
+  call -X "$method" -H @"$tmp/gitea.hdr" -H 'Accept: application/json' \
+    -H 'Content-Type: application/json' "$@" "$GITEA_URL/api/v1$path"
+}
+github() {
+  call -H @"$tmp/upstream.hdr" -H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2022-11-28' "$1"
+}
+gitlab() {
+  call -H @"$tmp/upstream.hdr" "$1"
+}
+message() { jq -r '.message // empty' "$tmp/body" 2>/dev/null | head -c 500; }
+
+# The receiving owner must exist
+gitea GET "/orgs/$to"
+if [ "$code" != 200 ]; then
+  gitea GET "/users/$to"
+  [ "$code" = 200 ] || { echo "Gitea has no user or organization '$to' (HTTP $code); create it first" >&2; exit 1; }
+fi
+
+# The upstream repositories, one tab-separated line each:
+# gitea_name, clone_url, private, fork, archived, wiki_enabled, description
+: >"$tmp/repos"
+if [ "$service" = github ]; then
+  api=https://api.github.com
+  github "$api/users/$name"
+  [ "$code" = 200 ] || { echo "GitHub: cannot look up '$name' (HTTP $code): $(message)" >&2; exit 1; }
+  kind=$(jq -r '.type // empty' "$tmp/body")
+  login=$(jq -r '.login // empty' "$tmp/body") # GitHub's spelling; names are case-insensitive
+  me=
+  if [ -n "$upstream_token" ]; then
+    github "$api/user"
+    [ "$code" = 200 ] || { echo "GitHub rejects GITHUB_TOKEN (HTTP $code): $(message)" >&2; exit 1; }
+    me=$(jq -r '.login // empty' "$tmp/body")
+  fi
+  if [ "$kind" = Organization ]; then
+    url="$api/orgs/$name/repos?type=all&per_page=100"
+  elif [ -n "$me" ] && [ "$me" = "$login" ]; then
+    url="$api/user/repos?affiliation=owner&visibility=all&per_page=100"
+  else
+    url="$api/users/$name/repos?type=owner&per_page=100"
+  fi
+  while [ -n "$url" ]; do
+    github "$url"
+    [ "$code" = 200 ] || { echo "GitHub: HTTP $code for $url: $(message)" >&2; exit 1; }
+    jq -r '.[] | [.name, .clone_url, .private, .fork, .archived, .has_wiki,
+      ((.description // "") | gsub("[\t\n\r]"; " "))] | @tsv' "$tmp/body" >>"$tmp/repos"
+    url=$(grep -i '^link:' "$tmp/headers" | tr -d '\r' | sed -n 's/.*<\([^>]*\)>; rel="next".*/\1/p')
+  done
+else
+  api=$GITLAB_URL/api/v4
+  enc=$(jq -rn --arg s "$name" '$s | @uri')
+  gitlab "$api/groups/$enc"
+  if [ "$code" = 200 ]; then
+    base="$api/groups/$enc/projects?include_subgroups=true&with_shared=false&per_page=100"
+    prefix="$name/"
+  else
+    gitlab "$api/users?username=$enc"
+    id=$(jq -r '.[0].id // empty' "$tmp/body" 2>/dev/null)
+    [ -n "$id" ] || { echo "GitLab: no group or user '$name' (HTTP $code): $(message)" >&2; exit 1; }
+    base="$api/users/$id/projects?per_page=100"
+    prefix=
+  fi
+  page=1
+  while [ -n "$page" ]; do
+    gitlab "$base&page=$page"
+    [ "$code" = 200 ] || { echo "GitLab: HTTP $code for $base&page=$page: $(message)" >&2; exit 1; }
+    # Personal projects keep their path; group projects get the path below the group, with - for /
+    jq -r --arg prefix "$prefix" '.[] |
+      [(.path_with_namespace | if $prefix == "" then (split("/") | last) else (ltrimstr($prefix) | gsub("/"; "-")) end),
+       .http_url_to_repo, (.visibility != "public"), (.forked_from_project != null), .archived,
+       ((.wiki_access_level // "disabled") != "disabled"),
+       ((.description // "") | gsub("[\t\n\r]"; " "))] | @tsv' "$tmp/body" >>"$tmp/repos"
+    page=$(grep -i '^x-next-page:' "$tmp/headers" | tr -d '\r' | awk '{print $2}')
+  done
+fi
+
+created=0
+skipped=0
+failed=0
+tab=$(printf '\t')
+while IFS="$tab" read -r repo clone private fork arch haswiki desc; do
+  [ -n "$repo" ] || continue
+  if [ -n "$match" ] && ! printf '%s\n' "$repo" | grep -Eq -- "$match"; then continue; fi
+  if [ "$fork" = true ] && ! $forks; then echo "fork, skipped:     $repo"; skipped=$((skipped + 1)); continue; fi
+  if [ "$arch" = true ] && ! $archived; then echo "archived, skipped: $repo"; skipped=$((skipped + 1)); continue; fi
+  gitea GET "/repos/$to/$repo"
+  if [ "$code" = 200 ]; then echo "exists, skipped:   $to/$repo"; skipped=$((skipped + 1)); continue; fi
+  if [ "$code" != 404 ]; then
+    echo "FAILED:            $to/$repo, cannot check whether it exists (HTTP $code)"
+    failed=$((failed + 1))
+    continue
+  fi
+  usewiki=false
+  $wiki && [ "$haswiki" = true ] && usewiki=true
+  if $dry; then
+    echo "would mirror:      $clone -> $to/$repo (private: $private, wiki: $usewiki, lfs: $lfs)"
+    continue
+  fi
+  body=$(UPSTREAM_TOKEN=$upstream_token jq -n --arg clone "$clone" --arg owner "$to" --arg repo "$repo" \
+    --arg interval "$interval" --arg desc "${desc:0:2048}" \
+    --argjson private "$private" --argjson wiki "$usewiki" --argjson lfs "$lfs" \
+    '{clone_addr: $clone, repo_owner: $owner, repo_name: $repo, service: "git", mirror: true,
+      mirror_interval: $interval, private: $private, wiki: $wiki, lfs: $lfs, description: $desc}
+     + (if $ENV.UPSTREAM_TOKEN != "" then {auth_token: $ENV.UPSTREAM_TOKEN} else {} end)')
+  echo "mirroring:         $clone -> $to/$repo ..."
+  # Blocks until Gitea has cloned the repository
+  gitea POST /repos/migrate --data-binary @- <<<"$body"
+  case $code in
+    201) echo "  done"; created=$((created + 1)) ;;
+    409) echo "  exists already"; skipped=$((skipped + 1)) ;;
+    *)
+      echo "  FAILED (HTTP $code): $(message)"
+      failed=$((failed + 1))
+      # A failed migration stays behind as "migration failed"; remove it so that the next run retries
+      gitea DELETE "/repos/$to/$repo"
+      ;;
+  esac
+done <"$tmp/repos"
+
+echo "created: $created, skipped: $skipped, failed: $failed"
+[ "$failed" -eq 0 ]

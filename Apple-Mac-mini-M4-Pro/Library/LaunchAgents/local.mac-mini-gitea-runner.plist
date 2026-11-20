@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Apple Mac mini M4 Pro (hostname mac-mini): optional macOS host runner for Gitea Actions.
+     Installed as ~/Library/LaunchAgents/local.mac-mini-gitea-runner.plist; the paths assume the user wmutschl
+     and Homebrew in /opt/homebrew. Used instead of `brew services`, whose launchd job stays down after a failed start. -->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>local.mac-mini-gitea-runner</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/opt/homebrew/bin/gitea-runner</string>
+		<string>daemon</string>
+		<string>--config</string>
+		<string>/Users/wmutschl/.config/gitea-runner/config.yaml</string>
+	</array>
+	<!-- .runner lives here -->
+	<key>WorkingDirectory</key>
+	<string>/Users/wmutschl/.config/gitea-runner</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<!-- git and node for the jobs and JavaScript actions -->
+		<key>PATH</key>
+		<string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+		<!-- Keeps the system git config, and with it the keychain credential helper, from blocking jobs -->
+		<key>GIT_CONFIG_NOSYSTEM</key>
+		<string>1</string>
+	</dict>
+	<key>RunAtLoad</key>
+	<true/>
+	<!-- Restarted after any exit, at most once a minute -->
+	<key>KeepAlive</key>
+	<true/>
+	<key>ThrottleInterval</key>
+	<integer>60</integer>
+	<key>StandardOutPath</key>
+	<string>/Users/wmutschl/Library/Logs/mac-mini-gitea-runner.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/wmutschl/Library/Logs/mac-mini-gitea-runner.log</string>
+</dict>
+</plist>

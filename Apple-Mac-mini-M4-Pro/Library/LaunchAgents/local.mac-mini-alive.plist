@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Apple Mac mini M4 Pro (hostname mac-mini): uptime ping every five minutes.
+     Installed as ~/Library/LaunchAgents/local.mac-mini-alive.plist; the paths assume the user wmutschl
+     and the scripts repository in ~/scripts. -->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>local.mac-mini-alive</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Users/wmutschl/scripts/Apple-Mac-mini-M4-Pro/mac-mini-alive</string>
+	</array>
+	<key>StartInterval</key>
+	<integer>300</integer>
+	<key>ProcessType</key>
+	<string>Background</string>
+	<!-- The script prints only problems, so the log stays small -->
+	<key>StandardOutPath</key>
+	<string>/Users/wmutschl/Library/Logs/mac-mini-alive.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/wmutschl/Library/Logs/mac-mini-alive.log</string>
+</dict>
+</plist>

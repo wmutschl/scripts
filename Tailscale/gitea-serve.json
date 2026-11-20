@@ -1,0 +1,19 @@
+{
+  "TCP": {
+    "22": {
+      "TCPForward": "gitea:2222"
+    },
+    "443": {
+      "HTTPS": true
+    }
+  },
+  "Web": {
+    "${TS_CERT_DOMAIN}:443": {
+      "Handlers": {
+        "/": {
+          "Proxy": "http://gitea:3000"
+        }
+      }
+    }
+  }
+}

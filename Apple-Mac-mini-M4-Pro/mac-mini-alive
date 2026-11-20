@@ -1,0 +1,65 @@
+#!/bin/bash
+# Apple Mac mini M4 Pro (hostname mac-mini): uptime check every five minutes, run by launchd
+# (Library/LaunchAgents/local.mac-mini-alive.plist).
+#
+# Pings mac-mini-alive when Gitea answers its health check at https://GITEA_DOMAIN/api/healthz, which takes
+# the Mac's own Tailscale app, OrbStack, Gitea's sidecar, Gitea and PostgreSQL; with MODCRAFT_CHECK_URL set
+# in ~/.config/mac-mini/host.env, modCraft's sidecar and Caddy as well. On the Mac, MagicDNS resolves modCraft's
+# name to the sidecar's tailnet address; with MODCRAFT_CHECK_FUNNEL=true the name is resolved through public DNS
+# (Cloudflare's DNS over HTTPS) instead, so the request takes the public route through Funnel.
+# The check goes down when the Mac is off, waits at the FileVault unlock or the login window, or any of those fails.
+# If OrbStack is not running, it starts OrbStack and reports a failure; ~/.config/mac-mini/maintenance stops that.
+# While mac-mini-gitea-backup holds Gitea stopped (for at most an hour), Gitea is not checked.
+# Prints only problems, so its log stays small.
+
+PATH=$HOME/.orbstack/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin
+set -u
+
+here=$(cd "$(dirname "$0")" && pwd)
+host_env=${MAC_MINI_HOST_ENV:-$HOME/.config/mac-mini/host.env}
+MODCRAFT_CHECK_URL=
+MODCRAFT_CHECK_FUNNEL=
+# shellcheck source=/dev/null
+[ -r "$host_env" ] && . "$host_env"
+gitea_domain=$(sed -n 's/^GITEA_DOMAIN=//p' "$here/.env" 2>/dev/null | tail -n 1)
+backup_lock=/tmp/mac-mini-gitea-backup.lock
+problems=
+
+problem() {
+  problems="$problems$*
+"
+}
+
+if [ "$(orb status 2>/dev/null)" != Running ]; then
+  if [ -e "$HOME/.config/mac-mini/maintenance" ]; then
+    problem "OrbStack is not running (maintenance file present, not starting it)"
+  elif out=$(orb start 2>&1); then
+    problem "OrbStack was not running; started it"
+  else
+    problem "OrbStack was not running and did not start: $out"
+  fi
+fi
+
+if [ -d "$backup_lock" ] && [ -n "$(find "$backup_lock" -maxdepth 0 -mmin -60)" ]; then
+  : # the backup stops Gitea on purpose
+elif [ -z "$gitea_domain" ]; then
+  problem "GITEA_DOMAIN not found in $here/.env"
+elif ! out=$(curl -fsS -m 20 -o /dev/null "https://$gitea_domain/api/healthz" 2>&1); then
+  problem "Gitea: $out"
+fi
+
+if [ -n "$MODCRAFT_CHECK_URL" ]; then
+  if [ "$MODCRAFT_CHECK_FUNNEL" = true ]; then
+    out=$(curl --doh-url https://1.1.1.1/dns-query -fsS -m 20 -o /dev/null "$MODCRAFT_CHECK_URL" 2>&1) ||
+      problem "modCraft through Funnel: $out"
+  else
+    out=$(curl -fsS -m 20 -o /dev/null "$MODCRAFT_CHECK_URL" 2>&1) || problem "modCraft: $out"
+  fi
+fi
+
+if [ -n "$problems" ]; then
+  printf '%s %s' "$(date '+%F %T')" "$problems"
+  MAC_MINI_HOST_ENV=$host_env "$here/mac-mini-hc-ping" alive fail "$problems"
+else
+  MAC_MINI_HOST_ENV=$host_env "$here/mac-mini-hc-ping" alive
+fi

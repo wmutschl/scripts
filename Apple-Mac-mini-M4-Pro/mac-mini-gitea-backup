@@ -1,0 +1,147 @@
+#!/bin/bash
+# Apple Mac mini M4 Pro (hostname mac-mini): daily Gitea backup, run by launchd
+# (Library/LaunchAgents/local.mac-mini-gitea-backup.plist). Running it by hand is safe.
+#
+# OrbStack keeps its volumes out of Time Machine, so this writes a consistent copy of Gitea into
+# GITEA_BACKUP_DIR (default ~/Backups/gitea), which Time Machine backs up:
+#   gitea-YYYYMMDD-HHMMSS/gitea-db.pgdump   pg_dump of the database (custom format, for pg_restore)
+#   gitea-YYYYMMDD-HHMMSS/gitea-dump.tar    gitea dump: repositories, LFS, attachments, packages,
+#                                           Actions logs, SSH host keys, app.ini and the database as SQL
+# Gitea is stopped meanwhile (seconds to minutes, depending on the size of the repositories), as its docs
+# require for a consistent dump; PostgreSQL keeps running. A Gitea that is running but not healthy, for example
+# while it migrates its database after an update, is not stopped: the backup fails instead.
+# The dump runs with the image the gitea container was created from, so a changed image tag in the compose
+# file does not affect it. Gitea is started again afterwards, also after an error, if it was running before,
+# and the run waits until Gitea answers again. Keeps the newest GITEA_BACKUP_KEEP runs; Time Machine keeps the history.
+# The copies contain every secret of the instance (app.ini, mirror tokens in the repositories' git config).
+# Reports to healthchecks.io as mac-mini-gitea-backup. Settings: ~/.config/mac-mini/host.env.
+
+PATH=$HOME/.orbstack/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin
+set -uo pipefail
+umask 077
+
+here=$(cd "$(dirname "$0")" && pwd)
+host_env=${MAC_MINI_HOST_ENV:-$HOME/.config/mac-mini/host.env}
+GITEA_BACKUP_DIR=$HOME/Backups/gitea
+GITEA_BACKUP_KEEP=2
+# shellcheck source=/dev/null
+[ -r "$host_env" ] && . "$host_env"
+lock=/tmp/mac-mini-gitea-backup.lock # also read by mac-mini-alive
+
+log() { echo "$(date '+%F %T') $*"; }
+ping_hc() { MAC_MINI_HOST_ENV=$host_env "$here/mac-mini-hc-ping" gitea-backup "$@"; }
+fail() {
+  log "FAILED: $*"
+  ping_hc fail "$*"
+  exit 1
+}
+gitea_health() { docker inspect -f '{{.State.Health.Status}}' gitea 2>/dev/null; }
+
+case $GITEA_BACKUP_KEEP in
+  '' | *[!0-9]*) fail "GITEA_BACKUP_KEEP must be a positive integer" ;;
+esac
+[ "$GITEA_BACKUP_KEEP" -ge 1 ] || fail "GITEA_BACKUP_KEEP must be a positive integer"
+
+# One run at a time; a lock older than six hours is left over from a killed run
+if [ -d "$lock" ] && [ -n "$(find "$lock" -maxdepth 0 -mmin +360)" ]; then
+  log "removing stale lock $lock"
+  rmdir "$lock"
+fi
+mkdir "$lock" 2>/dev/null || { log "another backup is running ($lock), skipped"; exit 0; }
+
+compose() { docker compose --project-directory "$here" --progress quiet "$@"; }
+gitea_was_running=false
+partial=
+
+cleanup() {
+  status=$?
+  if $gitea_was_running && [ "$(docker inspect -f '{{.State.Running}}' gitea 2>/dev/null)" != true ]; then
+    log "starting gitea again"
+    compose start gitea >/dev/null || log "could not start gitea"
+  fi
+  if [ -n "$partial" ] && [ -d "$partial" ]; then
+    rm -f "$partial/gitea-db.pgdump" "$partial/gitea-dump.tar" "$partial/gitea-dump.log"
+    rmdir "$partial"
+  fi
+  rmdir "$lock" 2>/dev/null
+  exit "$status"
+}
+trap cleanup EXIT
+trap 'exit 130' INT TERM HUP
+cd "$here" || exit 1
+
+ping_hc start
+
+docker info >/dev/null 2>&1 || fail "Docker (OrbStack) is not running"
+[ "$(docker inspect -f '{{.State.Health.Status}}' gitea-db 2>/dev/null)" = healthy ] || fail "gitea-db is not running or not healthy"
+image=$(docker inspect -f '{{.Image}}' gitea 2>/dev/null) || fail "there is no gitea container"
+if [ "$(docker inspect -f '{{.State.Running}}' gitea 2>/dev/null)" = true ]; then
+  # Right after OrbStack started, Gitea may still be starting; give it five minutes
+  for _ in $(seq 30); do
+    [ "$(gitea_health)" = healthy ] && break
+    sleep 10
+  done
+  [ "$(gitea_health)" = healthy ] || fail "gitea is running but not healthy (migrating after an update?); not stopping it"
+  gitea_was_running=true
+fi
+
+mkdir -p "$GITEA_BACKUP_DIR" || fail "cannot create $GITEA_BACKUP_DIR"
+chmod 700 "$GITEA_BACKUP_DIR"
+name=gitea-$(date +%Y%m%d-%H%M%S)
+partial=$GITEA_BACKUP_DIR/$name.partial
+mkdir "$partial" || fail "cannot create $partial"
+
+if $gitea_was_running; then
+  log "stopping gitea"
+  compose stop gitea >/dev/null || fail "could not stop gitea"
+fi
+
+log "pg_dump"
+compose exec -T gitea-db pg_dump -U gitea -d gitea --format=custom >"$partial/gitea-db.pgdump" ||
+  fail "pg_dump failed"
+[ -s "$partial/gitea-db.pgdump" ] || fail "pg_dump wrote nothing"
+
+log "gitea dump"
+# A one-off container with the stopped container's image and volumes, on the database's network.
+# --file - streams the archive to stdout; Gitea logs to stderr. No -t: a terminal would corrupt the stream.
+if ! docker run --rm --volumes-from gitea --network gitea-db "$image" \
+  gitea dump --file - --type tar --skip-log --skip-index \
+  >"$partial/gitea-dump.tar" 2>"$partial/gitea-dump.log"; then
+  fail "gitea dump failed: $(tail -n 5 "$partial/gitea-dump.log")"
+fi
+contents=$(tar -tf "$partial/gitea-dump.tar" 2>&1) || fail "gitea-dump.tar is not a readable tar archive"
+for f in app.ini gitea-db.sql; do
+  grep -qx "$f" <<<"$contents" || fail "gitea-dump.tar lacks $f"
+done
+rm -f "$partial/gitea-dump.log"
+
+if $gitea_was_running; then
+  log "starting gitea"
+  compose start gitea >/dev/null || fail "could not start gitea"
+fi
+
+mv "$partial" "$GITEA_BACKUP_DIR/$name" || fail "cannot rename $partial"
+partial=
+
+# Keep the lock, which keeps mac-mini-alive from checking Gitea, until Gitea answers again
+if $gitea_was_running; then
+  for _ in $(seq 90); do
+    docker exec gitea curl -fsS -o /dev/null http://localhost:3000/api/healthz 2>/dev/null && break
+    sleep 2
+  done
+  docker exec gitea curl -fsS -o /dev/null http://localhost:3000/api/healthz 2>/dev/null ||
+    fail "gitea did not answer within three minutes after the backup (the backup itself is complete)"
+fi
+
+# Keep the newest GITEA_BACKUP_KEEP runs, never the one just written; the names sort by date
+find "$GITEA_BACKUP_DIR" -mindepth 1 -maxdepth 1 -type d -name 'gitea-????????-??????' | sort -r |
+  tail -n +$((GITEA_BACKUP_KEEP + 1)) | while IFS= read -r d; do
+  [ "${d##*/}" = "$name" ] && continue
+  log "removing $d"
+  rm -f "$d/gitea-db.pgdump" "$d/gitea-dump.tar"
+  rmdir "$d" || log "could not remove $d"
+done
+
+size=$(du -sh "$GITEA_BACKUP_DIR/$name" | cut -f1)
+log "backup complete: $GITEA_BACKUP_DIR/$name ($size)"
+ping_hc
