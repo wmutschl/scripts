@@ -1,0 +1,153 @@
+#!/bin/bash
+# Dell Wyse 5070 (hostname dell-wyse): is it safe to reboot right now?
+#
+#   ~/scripts/Dell-Wyse-Thin-Client-5070/dell-wyse-reboot-check
+#
+# Looks for anything that a reboot would interrupt: BTRBK snapshots and send/receive, the
+# off-site rsync, AIO's Borg backup and any Borg lock, BTRFS scrub and balance, SMART
+# self-tests, apt and dpkg. Exits 0 when nothing is running and 1 when something is, so it
+# also works as `dell-wyse-reboot-check && sudo systemctl reboot`.
+# "note" lines are hints that do not block the reboot.
+set -uo pipefail
+
+[ "$(id -u)" = 0 ] || exec sudo "$0" "$@"
+
+# AIO's daily backup time as set in its interface; AIO reads it as UTC (guide section 10.1)
+AIO_BACKUP_UTC=03:00
+# Note a timer or the AIO backup that starts within this many seconds
+SOON=1800
+
+blocked=0
+ok() { printf '  [ ok ]  %s\n' "$1"; }
+note() { printf '  [note]  %s\n' "$1"; }
+busy() { printf '  [BUSY]  %s\n' "$1"; blocked=1; }
+detail() { sed 's/^/            /' <<<"$1"; }
+
+printf 'Is the Wyse idle? It is %s.\n\n' "$(date '+%a %d %b %H:%M %Z')"
+
+# 1. systemd jobs: a running oneshot service is "activating".
+#    dell-wyse-alive runs for a second every five minutes, so it is left out.
+units=$(systemctl list-units 'dell-wyse-*' 'apt-daily*' fstrim.service --type=service \
+  --state=activating,deactivating --no-legend --plain |
+  awk '$1 != "dell-wyse-alive.service" { print $1 }')
+if [ -n "$units" ]; then
+  busy "systemd jobs are running:"
+  detail "$units"
+else
+  ok "no dell-wyse, apt or fstrim job is running"
+fi
+
+# 2. Processes behind the jobs, including ones started by hand
+procs=$(pgrep -a -x 'btrbk|btrfs|rsync|borg')
+if [ -n "$procs" ]; then
+  busy "backup processes are running (btrbk, btrfs, rsync, borg):"
+  detail "$procs"
+else
+  ok "no btrbk, btrfs, rsync or borg process"
+fi
+
+pkgs=$({ pgrep -a -x 'apt|apt-get|aptitude|dpkg'; pgrep -a -f '^/usr/bin/python3 /usr/bin/unattended-upgrade'; })
+if [ -n "$pkgs" ]; then
+  busy "the package manager is running:"
+  detail "$pkgs"
+else
+  ok "apt, dpkg and unattended-upgrades are idle"
+fi
+
+# 3. AIO's backup container and the Borg repository's locks, as dell-wyse-offsite checks them
+if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+  aio=$(docker ps --filter 'name=^nextcloud-aio-borgbackup$' --filter status=running --format '{{.Names}} ({{.Status}})')
+  if [ -n "$aio" ]; then
+    busy "AIO's backup container is running:"
+    detail "$aio"
+  else
+    ok "AIO's backup container is not running"
+  fi
+  nc=$(docker ps --format '{{.Names}}' | grep '^nextcloud-aio-' | grep -vc 'mastercontainer')
+  if [ "$nc" -gt 0 ]; then
+    note "$nc Nextcloud AIO containers are running: stop them in the AIO interface before rebooting"
+  fi
+else
+  note "Docker is not running, so AIO's backup container could not be checked"
+fi
+
+repo=/mnt/backup/borg
+if [ -e "$repo/lock.exclusive" ] || [ -e "$repo/lock.roster" ]; then
+  busy "the Borg repository is locked:"
+  detail "$(ls -d "$repo"/lock.* 2>/dev/null)"
+else
+  ok "no Borg lock in $repo"
+fi
+
+# 4. BTRFS scrub and balance on the three filesystems
+for fs in / /mnt/btrbk /mnt/backup; do
+  if ! mountpoint -q "$fs"; then
+    note "$fs is not mounted"
+    continue
+  fi
+  state=
+  if btrfs scrub status "$fs" 2>/dev/null | grep -q '^Status:[[:space:]]*running'; then
+    busy "a scrub is running on $fs ('sudo btrfs scrub status $fs')"
+    state=1
+  fi
+  if btrfs balance status "$fs" 2>/dev/null | grep -q 'is running'; then
+    busy "a balance is running on $fs ('sudo btrfs balance status $fs')"
+    state=1
+  fi
+  [ -n "$state" ] || ok "no scrub or balance on $fs"
+done
+
+# 5. SMART self-tests; -n standby keeps smartctl from waking a sleeping HDD
+tests=
+for d in /dev/disk/by-id/ata-* /dev/disk/by-id/usb-*; do
+  [ -e "$d" ] || continue
+  case $d in *-part*) continue ;; esac
+  out=$(smartctl -n standby -c "$d" 2>/dev/null | grep -i -A1 'self-test routine in progress')
+  [ -z "$out" ] || tests+="$d"$'\n'"$out"$'\n'
+done
+if [ -n "$tests" ]; then
+  busy "a SMART self-test is running (a reboot aborts it, which is harmless):"
+  detail "${tests%$'\n'}"
+else
+  ok "no SMART self-test in progress"
+fi
+
+# 6. Jobs that start shortly, which are not a blocker: Persistent timers catch up after the boot.
+#    The hourly snapshot is left out, because it only takes seconds.
+now=$(date +%s)
+for t in $(systemctl list-units 'dell-wyse-*.timer' --no-legend --plain | awk '{ print $1 }'); do
+  case $t in dell-wyse-alive.timer | dell-wyse-btrbk-snapshot.timer) continue ;; esac
+  next=$(systemctl show "$t" -p NextElapseUSecRealtime --value)
+  [ -n "$next" ] || continue
+  ts=$(date -d "$next" +%s 2>/dev/null) || continue
+  left=$((ts - now))
+  if [ "$left" -ge 0 ] && [ "$left" -le "$SOON" ]; then
+    note "$t fires in $((left / 60)) min"
+  fi
+done
+aio_next=$(date -u -d "today $AIO_BACKUP_UTC" +%s 2>/dev/null) || aio_next=
+if [ -n "$aio_next" ]; then
+  [ "$aio_next" -ge "$now" ] || aio_next=$(date -u -d "tomorrow $AIO_BACKUP_UTC" +%s)
+  left=$((aio_next - now))
+  [ "$left" -gt "$SOON" ] || note "AIO's backup starts in $((left / 60)) min"
+fi
+
+# 7. Failed units are worth a look before the reboot clears them
+failed=$(systemctl --failed --no-legend --plain | awk '{ print $1 }')
+if [ -n "$failed" ]; then
+  note "failed units (look at them before the reboot clears them):"
+  detail "$failed"
+fi
+
+echo
+if [ "$blocked" = 1 ]; then
+  echo "NOT safe to reboot: wait for the jobs above to finish."
+  echo "  progress of a send:  sudo dell-wyse-btrbk-progress"
+  echo "  follow a job:        sudo journalctl -fu dell-wyse-btrbk-send -u dell-wyse-offsite"
+  exit 1
+fi
+echo "Safe to reboot. Before you do:"
+echo "  1. Stop the containers in the AIO interface."
+echo "  2. Have the SSD passphrase ready and a machine on the LAN for the unlock."
+echo "  3. sync && sudo systemctl reboot"
+echo "  4. From the Mac: ssh -t dell-wyse-unlock systemd-tty-ask-password-agent"

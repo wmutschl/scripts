@@ -1,0 +1,22 @@
+# Dell Wyse 5070 (hostname dell-wyse): monthly scrub of all three BTRFS filesystems, then a check of their error counters.
+# The assertions make it fail visibly when an HDD is missing, rather than scrubbing the SSD twice.
+# The counters persist: after dealing with an error, reset them with btrfs device stats -z, or every scrub reports again.
+[Unit]
+Description=Scrub the Wyse BTRFS filesystems
+RequiresMountsFor=/ /mnt/btrbk /mnt/backup
+AssertPathIsMountPoint=/mnt/btrbk
+AssertPathIsMountPoint=/mnt/backup
+OnFailure=dell-wyse-fail@%N.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/btrfs scrub start -B -d /
+ExecStart=/usr/bin/btrfs scrub start -B -d /mnt/btrbk
+ExecStart=/usr/bin/btrfs scrub start -B -d /mnt/backup
+ExecStart=/usr/bin/btrfs device stats --check /
+ExecStart=/usr/bin/btrfs device stats --check /mnt/btrbk
+ExecStart=/usr/bin/btrfs device stats --check /mnt/backup
+ExecStartPost=-/usr/local/sbin/dell-wyse-hc-ping %N
+TimeoutStartSec=infinity
+Nice=19
+IOSchedulingClass=idle

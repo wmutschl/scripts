@@ -1,0 +1,16 @@
+# Dell Wyse 5070 (hostname dell-wyse): daily send/receive to HDD 1.
+# btrbk resume sends every snapshot that HDD 1's retention still needs, incrementally,
+# including days missed while the disk was detached, then prunes per retention.
+[Unit]
+Description=BTRBK daily send/receive to HDD 1
+RequiresMountsFor=/mnt/wyse-top /mnt/btrbk
+AssertPathIsMountPoint=/mnt/btrbk
+OnFailure=dell-wyse-fail@%N.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/flock /run/lock/btrbk-timers.lock /usr/bin/btrbk resume
+ExecStartPost=-/usr/local/sbin/dell-wyse-hc-ping %N
+TimeoutStartSec=infinity
+Nice=10
+IOSchedulingClass=idle

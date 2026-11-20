@@ -1,0 +1,21 @@
+# Dell Wyse 5070 (hostname dell-wyse): hourly snapshots on the Vi560.
+# Creates and prunes snapshots in @snapshots; writes nothing to HDD 1, but reads it
+# to find the latest snapshot/backup pair that the next incremental send needs.
+# While HDD 1 is not mounted, btrbk keeps every snapshot and exits with status 10,
+# so this job fails and alerts every hour until HDD 1 is back.
+# WantsMountsFor= mounts HDD 1 if needed and waits for that, but runs even if it fails.
+# Without it, the run that catches up on missed hours at boot looks at /mnt/btrbk
+# before HDD 1 is unlocked and mounted, and fails.
+[Unit]
+Description=BTRBK hourly snapshots on the Vi560
+RequiresMountsFor=/mnt/wyse-top
+WantsMountsFor=/mnt/btrbk
+OnFailure=dell-wyse-fail@%N.service
+
+[Service]
+Type=oneshot
+# Shared lock with dell-wyse-btrbk-send: the two wait for each other instead of failing
+ExecStart=/usr/bin/flock /run/lock/btrbk-timers.lock /usr/bin/btrbk snapshot
+ExecStartPost=-/usr/local/sbin/dell-wyse-hc-ping %N
+Nice=10
+IOSchedulingClass=idle

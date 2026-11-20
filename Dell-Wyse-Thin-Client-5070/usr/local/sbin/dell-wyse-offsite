@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+# Dell Wyse 5070 (hostname dell-wyse): mirror AIO's Borg repository (HDD 2) and the
+# Home Assistant backups to a Hetzner Storage Box over SSH, after AIO's nightly backup.
+# Run by dell-wyse-offsite.timer (section 7.6); settings are in /etc/dell-wyse/host.env.
+# OFFSITE_TARGET is a sub-account; borg/ and ha-backups/ are in its home directory, the only one it can see.
+#
+# Both are encrypted before they leave the Wyse:
+# Borg with AIO's Borg password, HA backups with the key from HA's emergency kit.
+# The copy is a mirror only:
+# never let AIO or Borg write to it; to restore from it, copy it back first (section 7.7).
+set -euo pipefail
+
+. /etc/dell-wyse/host.env
+repo=/mnt/backup/borg
+# The unit passes "storagebox"; no other target exists.
+case ${1:-storagebox} in
+  storagebox) ;;
+  *) echo "Usage: $0 [storagebox]" >&2; exit 2 ;;
+esac
+
+: "${OFFSITE_TARGET:?is empty in /etc/dell-wyse/host.env}"
+dest="$OFFSITE_TARGET:"
+# --timeout ends a stalled connection after 15 minutes instead of hanging the run; the next run continues.
+opts=(-a --partial-dir=.rsync-partial --exclude='/lock.*' --timeout=900
+      -e "ssh -p ${OFFSITE_PORT:-23} -i /root/.ssh/dell-wyse-offsite -o BatchMode=yes")
+[ -n "${OFFSITE_BWLIMIT:-}" ] && opts+=(--bwlimit="$OFFSITE_BWLIMIT")
+
+mountpoint -q /mnt/backup || { echo "/mnt/backup is not mounted" >&2; exit 1; }
+[ -f "$repo/config" ] || { echo "No Borg repository in $repo" >&2; exit 1; }
+
+# Wait up to four hours for AIO's backup container and any Borg lock to go away.
+busy() {
+  [ -n "$(docker ps -q --filter 'name=^nextcloud-aio-borgbackup$' --filter status=running)" ] ||
+    [ -e "$repo/lock.exclusive" ] || [ -e "$repo/lock.roster" ]
+}
+wait_idle() {
+  for _ in $(seq 48); do
+    busy || return 0
+    sleep 300
+  done
+  echo "AIO's backup is still running after four hours; skipping tonight" >&2
+  exit 1
+}
+# Every committed Borg transaction (backup, prune, compact) writes a new index.N.
+transaction() { find "$repo" -maxdepth 1 -name 'index.*' -printf '%f\n' | sort; }
+# rsync exits 24 when a file it has listed is gone before it is sent: a segment that AIO's nightly
+# borg compact removed during a long copy, such as the first upload, or an HA backup that HA rotated.
+# Only the segment pass and the HA pass accept that; a compact also commits, so the transaction
+# check below repeats the copy.
+copy_vanished_ok() {
+  local rc=0
+  rsync "${opts[@]}" "$@" || rc=$?
+  [ "$rc" = 0 ] || [ "$rc" = 24 ] || exit "$rc"
+}
+
+wait_idle
+stale=
+if [ -z "$(find "$repo" -maxdepth 1 -name 'index.*' -mmin -1560)" ]; then
+  echo "The Borg repository has not changed in 26 hours: did AIO's daily backup run?" >&2
+  stale=1
+fi
+
+# Three passes keep the remote repository usable at every moment, even if a run breaks off:
+# new segments first, then the index files that reference them, and only then delete what Borg has compacted away.
+# The index files follow only if Borg committed nothing while the segments were copied,
+# so the copy's newest index never points to segments the copy lacks.
+# If Borg committed something during the copy (a manual backup, say), copy again, up to three times.
+for attempt in 1 2 3; do
+  [ "$attempt" = 1 ] || wait_idle
+  before=$(transaction)
+  copy_vanished_ok --include='/data/***' --exclude='*' "$repo/" "${dest}borg/"
+  if [ "$(transaction)" = "$before" ] && ! busy; then
+    rsync "${opts[@]}" --exclude=/data "$repo/" "${dest}borg/"
+    rsync "${opts[@]}" --delete "$repo/" "${dest}borg/"
+    [ "$(transaction)" = "$before" ] && break
+  fi
+  echo "Borg wrote to the repository during the copy (attempt $attempt)" >&2
+  if [ "$attempt" = 3 ]; then
+    echo "The repository kept changing; the next run completes the copy" >&2
+    exit 1
+  fi
+done
+
+# An empty share means a rebuilt Wyse or a broken HA upload; it must never empty the Storage Box's HA backups.
+[ -n "$(find /srv/ha-backups -mindepth 1 -maxdepth 1 -print -quit)" ] ||
+  { echo "/srv/ha-backups is empty; not mirroring it" >&2; exit 1; }
+copy_vanished_ok --delete /srv/ha-backups/ "${dest}ha-backups/"
+
+[ -z "$stale" ]

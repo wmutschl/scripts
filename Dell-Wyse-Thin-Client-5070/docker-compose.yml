@@ -1,0 +1,101 @@
+# Dell Wyse 5070 (hostname dell-wyse), Ubuntu Server 26.04 LTS
+# Nextcloud All-in-One behind a Tailscale sidecar
+#
+#   cd ~/scripts/Dell-Wyse-Thin-Client-5070
+#   sudo docker compose up -d
+#
+# Do not use `docker compose down` for this project: it would try to remove the
+# nextcloud-aio network while AIO's own containers are still attached to it.
+# Stop and start Nextcloud through the AIO interface instead.
+# Keep the project name different from nextcloud-aio:
+# AIO labels its own containers with that compose project,
+# and they must never look like orphans of this one.
+name: dell-wyse
+
+services:
+  nextcloud-tailscale:
+    image: ghcr.io/tailscale/tailscale:latest
+    container_name: nextcloud-tailscale
+    # unless-stopped: a sidecar stopped on purpose (maintenance, import, handover)
+    # stays stopped across a reboot instead of reopening public access
+    restart: unless-stopped
+    init: true
+    environment:
+      - TS_AUTHKEY=${TAILSCALE_OAUTH_KEY}?ephemeral=false
+      - TS_HOSTNAME=${TAILSCALE_HOSTNAME}
+      # Own tag, the policy can treat Nextcloud separately, and the Wyse's OAuth client can only mint keys for this tag
+      - TS_EXTRA_ARGS=--advertise-tags=tag:nextcloud
+      # nextcloud-funnel.json publishes Nextcloud through Funnel; nextcloud-serve.json keeps it tailnet-only (.env)
+      - TS_SERVE_CONFIG=/config/${TAILSCALE_SERVE_CONFIG:-nextcloud-funnel.json}
+      - TS_STATE_DIR=/var/lib/tailscale
+      # Without this, every restart mints a new single-use key from the OAuth secret
+      - TS_AUTH_ONCE=true
+      - TS_NO_LOGS_NO_SUPPORT=true # no client-log upload to Tailscale (see ../README.md)
+      # Userspace networking: no /dev/net/tun, no NET_ADMIN/NET_RAW.
+      - TS_USERSPACE=true
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - nextcloud-tailscale-data:/var/lib/tailscale
+      # The repository's shared Tailscale/ folder, read-only (a directory mount);
+      # containerboot watches it and re-applies the serve configuration when it changes.
+      - ../Tailscale:/config:ro
+    networks:
+      - nextcloud-aio
+
+  nextcloud-aio:
+    image: ghcr.io/nextcloud-releases/all-in-one:latest
+    container_name: nextcloud-aio-mastercontainer # DO NOT CHANGE
+    init: true
+    restart: always
+    depends_on:
+      - nextcloud-tailscale
+    networks:
+      - nextcloud-aio
+    # Only if you use the Memories app with its AIO community container:
+    # hands the J4105's GPU to AIO, which passes it on to the Nextcloud and Memories containers
+    # for VA-API video transcoding (replaces the deprecated NEXTCLOUD_ENABLE_DRI_DEVICE).
+    # After changing this, run up -d once more, then stop and start the containers in AIO.
+    # devices:
+    #   - /dev/dri
+    ports:
+      # Break-glass access to the AIO interface through an SSH tunnel, for when the sidecar is stopped or broken.
+      # Loopback only, never reachable from the LAN.
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - nextcloud_aio_mastercontainer:/mnt/docker-aio-config # DO NOT CHANGE
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      APACHE_PORT: 11000
+      # The sidecar reaches nextcloud-aio-apache:11000 over the nextcloud-aio network,
+      # so Apache is not published on the host at all.
+      # AIO's own Caddy community container uses the same value.
+      # The quotes are required in YAML.
+      APACHE_IP_BINDING: "@INTERNAL"
+      # AIO's domain check reaches its domaincheck container (it carries the nextcloud-aio-apache alias)
+      # through the sidecar: with nextcloud-funnel.json over Funnel's public name,
+      # with nextcloud-serve.json over the host's MagicDNS (--accept-dns=true, guide section 9.2).
+      # If the check still fails after verifying the route,
+      # open the AIO interface once with /containers?skip_domain_validation instead of changing this.
+      SKIP_DOMAIN_VALIDATION: false
+      NEXTCLOUD_DATADIR: ${NEXTCLOUD_DATADIR} # set once, before the first start
+      NEXTCLOUD_MEMORY_LIMIT: 2048M # format NNNNM, AIO default 512M
+      NEXTCLOUD_UPLOAD_LIMIT: 32G # format NNG
+
+volumes:
+  nextcloud_aio_mastercontainer:
+    name: nextcloud_aio_mastercontainer # DO NOT CHANGE
+  nextcloud-tailscale-data:
+    name: nextcloud-tailscale-data
+
+networks:
+  nextcloud-aio:
+    name: nextcloud-aio
+    driver: bridge
+    enable_ipv6: false
+    driver_opts:
+      # Ports published without an explicit address land on loopback, not the LAN.
+      # AIO adds this network's subnet to Nextcloud's trusted_proxies by itself.
+      # No jumbo-frame MTU here, unlike on the Mac:
+      # it brings nothing measurable on a single-host bridge and differs from the 1500-byte LAN.
+      com.docker.network.bridge.host_binding_ipv4: "127.0.0.1"

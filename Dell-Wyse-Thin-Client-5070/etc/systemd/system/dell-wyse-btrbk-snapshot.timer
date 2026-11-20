@@ -1,0 +1,9 @@
+[Unit]
+Description=Hourly BTRBK snapshots
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+
+[Install]
+WantedBy=timers.target

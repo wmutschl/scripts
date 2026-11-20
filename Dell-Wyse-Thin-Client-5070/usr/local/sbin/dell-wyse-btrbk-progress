@@ -1,0 +1,93 @@
+#!/bin/bash
+# Dell Wyse 5070 (hostname dell-wyse): progress of the running BTRBK send to HDD 1,
+# and how much the next send will carry.
+#
+#   sudo dell-wyse-btrbk-progress [SUBVOLUME]
+#
+# With a send running, it reports that send: its size, how much is sent, what is left,
+# the average rate and the expected end, then what the next send of the same subvolume
+# carries so far.
+# Without a send, it reports only the next send of SUBVOLUME (default @nextcloud),
+# measured against its latest copy on HDD 1, at the rate in DEFAULT_RATE.
+#
+# Sizes are net changes measured with du: deleted files subtract, a changed file counts in full.
+# The send carries every new or changed file, so after large deletions it can be bigger.
+# Progress is the number of stream bytes btrfs receive has read, which is exact.
+# du walks the snapshots and the live subvolume, about a minute each on the SSD; it only reads.
+set -euo pipefail
+
+TOP=/mnt/wyse-top
+SNAPSHOTS=$TOP/@snapshots
+TARGET=/mnt/btrbk/wyse
+# HDD 1 (drive-managed SMR) measured 2.9-3.4 MB/s during a 219 GiB send on 2026-11-18
+DEFAULT_RATE=3000000
+
+[ "$(id -u)" = 0 ] || { echo "Run with sudo: sudo $0" >&2; exit 1; }
+
+size() { du -s --block-size=1 "$1" | cut -f1; }
+gib() { awk -v b="$1" 'BEGIN { printf "%6.1f GiB", b / 2^30 }'; }
+gibs() { awk -v b="$1" 'BEGIN { printf "%.1f GiB", b / 2^30 }'; }
+hours() { printf '%dh %02dmin' $(($1 / 3600)) $(($1 % 3600 / 60)); }
+clock() { date -d "@$(($(date +%s) + $1))" '+%a %H:%M'; }
+
+# The running send: "btrfs send [OPTIONS] [-p PARENT] SNAPSHOT"; the snapshot is always last,
+# a full copy has no -p, and options such as -c CLONE or --proto 2 may come in between
+read -r parent snap < <(ps -o args= -C btrfs |
+  awk '$2 == "send" && !n++ { p = "-"; for (i = 3; i < NF; i++) if ($i == "-p") p = $(i + 1); print p, $NF }') || true
+rate=$DEFAULT_RATE
+rate_note="assumed rate"
+
+if [ -n "${snap:-}" ]; then
+  name=$(basename "$snap")
+  sub=${name%.*}
+  receive=$(ps -o pid=,args= -C btrfs | awk '$3 == "receive" && !n++ { print $1 }')
+  echo "Sending $name to HDD 1, $([ "$parent" = - ] && echo 'full copy' || echo "incremental from $(basename "$parent")")"
+  echo "Measuring with du, about a minute per subvolume..."
+
+  s=$(size "$snap")
+  p=0
+  [ "$parent" = - ] || p=$(size "$parent")
+  total=$((s > p ? s - p : 0))
+  sent=0 elapsed=0
+  if [ -n "$receive" ]; then
+    sent=$(awk '/^rchar/ { print $2 }' "/proc/$receive/io")
+    elapsed=$(ps -o etimes= -p "$receive" | tr -d ' ')
+  fi
+  left=$((total > sent ? total - sent : 0))
+  if [ "$elapsed" -gt 0 ] && [ "$sent" -gt 0 ]; then
+    rate=$((sent / elapsed))
+    rate_note="rate of the current send"
+  fi
+  pct=$(awk -v a="$sent" -v b="$total" 'BEGIN { printf "%.0f", b ? (a > b ? 100 : 100 * a / b) : 100 }')
+
+  echo
+  echo "Current send"
+  echo "  size     $(gib "$total")  (snapshot $(gibs "$s"), parent $(gibs "$p"))"
+  echo "  sent     $(gib "$sent")  ${pct} % in $(hours "$elapsed")"
+  echo "  left     $(gib "$left")"
+  awk -v r="$rate" 'BEGIN { printf "  rate     %6.2f MB/s  (%.1f GB/h)\n", r / 1e6, r * 3600 / 1e9 }'
+  echo "  end      about $(clock $((left / rate)))  ($(hours $((left / rate))) from now)"
+  if [ "$left" = 0 ]; then
+    echo "           The stream is through; the receive finishes writing and sets the copy read-only."
+  fi
+  echo "  The other subvolumes of this run follow; they usually take seconds."
+  base=$snap
+else
+  sub=${1:-@nextcloud}
+  echo "No send running."
+  latest=$(find "$TARGET" -mindepth 1 -maxdepth 1 -name "$sub.*" -printf '%f\n' | sort | tail -n 1)
+  [ -n "$latest" ] || { echo "No copy of $sub on HDD 1 ($TARGET)" >&2; exit 1; }
+  base=$SNAPSHOTS/$latest
+  [ -d "$base" ] || { echo "$latest is on HDD 1 but no longer in $SNAPSHOTS" >&2; exit 1; }
+  echo "Measuring with du, about a minute per subvolume..."
+fi
+
+live=$TOP/$sub
+b=$(size "$base")
+l=$(size "$live")
+next=$((l > b ? l - b : 0))
+echo
+echo "Next send of $sub, as of now"
+echo "  size     $(gib "$next")  (live $(gibs "$l"), against $(basename "$base"))"
+echo "  takes    about $(hours $((next / rate)))  at the $rate_note ($(awk -v r="$rate" 'BEGIN { printf "%.2f MB/s", r / 1e6 }'))"
+echo "  The next 01:30 run sends the first snapshot after midnight; later changes wait a day."

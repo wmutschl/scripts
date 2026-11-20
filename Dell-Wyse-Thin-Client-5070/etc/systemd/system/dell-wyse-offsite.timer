@@ -1,0 +1,9 @@
+[Unit]
+Description=Nightly off-site mirror, after AIO's backup
+
+[Timer]
+OnCalendar=*-*-* 06:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,14 @@
+# Dell Wyse 5070 (hostname dell-wyse): uptime ping.
+# Its check goes down when the Wyse is off, has no network, or systemd's timers stopped running.
+[Unit]
+Description=Tell healthchecks.io that the Wyse is up
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/dell-wyse-hc-ping %N
+# Runs every five minutes: keep systemd's routine start and stop messages out of the journal.
+# The script's output (curl's errors, the empty-key notice) is logged at err, so it still gets through.
+SyslogLevel=err
+LogLevelMax=warning

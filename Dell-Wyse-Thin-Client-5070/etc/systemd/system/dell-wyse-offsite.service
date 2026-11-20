@@ -1,0 +1,16 @@
+# Dell Wyse 5070 (hostname dell-wyse): nightly off-site mirror of AIO's Borg repository
+# and the Home Assistant backups. Also fails when AIO's backup did not run.
+[Unit]
+Description=Mirror the Borg repository and HA backups to the Storage Box
+Wants=network-online.target
+After=network-online.target docker.service
+RequiresMountsFor=/mnt/backup /srv/ha-backups
+OnFailure=dell-wyse-fail@%N.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/dell-wyse-offsite storagebox
+ExecStartPost=-/usr/local/sbin/dell-wyse-hc-ping %N
+TimeoutStartSec=infinity
+Nice=10
+IOSchedulingClass=idle

@@ -1,0 +1,8 @@
+# Dell Wyse 5070 (hostname dell-wyse): OnFailure= handler of the dell-wyse-* jobs.
+# Sends a failure ping with the failed unit's last log lines to healthchecks.io.
+[Unit]
+Description=Report the failure of %i to healthchecks.io
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/dell-wyse-hc-ping %i fail

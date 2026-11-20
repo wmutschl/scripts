@@ -1,0 +1,10 @@
+# Dell Wyse 5070 (hostname dell-wyse): daily check that Home Assistant's backup arrived.
+[Unit]
+Description=Check that today's Home Assistant backup reached the Wyse
+RequiresMountsFor=/srv/ha-backups
+OnFailure=dell-wyse-fail@%N.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/dell-wyse-ha-backup-check
+ExecStartPost=-/usr/local/sbin/dell-wyse-hc-ping %N

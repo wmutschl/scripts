@@ -1,0 +1,13 @@
+#!/bin/sh
+# Dell Wyse 5070 (hostname dell-wyse):
+# fail unless Home Assistant delivered a backup to the SMB share within the last 26 hours.
+# Run by dell-wyse-ha-backup-check.timer; its healthchecks.io check also goes down
+# when the Pi, HA, Samba or the network is broken, none of which HA itself could report.
+set -eu
+dir=/srv/ha-backups
+newest=$(find "$dir" -type f -name '*.tar' -mmin -1560 -printf '%TY-%Tm-%Td %TH:%TM  %s bytes  %P\n' | sort | tail -n 1)
+if [ -z "$newest" ]; then
+  echo "No Home Assistant backup newer than 26 hours in $dir" >&2
+  exit 1
+fi
+echo "Newest Home Assistant backup: $newest"

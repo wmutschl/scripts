@@ -1,0 +1,34 @@
+#!/bin/sh
+# Dell Wyse 5070 (hostname dell-wyse): report a job's result to healthchecks.io.
+#
+#   dell-wyse-hc-ping NAME              success ping
+#   dell-wyse-hc-ping NAME fail [TEXT]  failure ping; TEXT, or else the last 40 log lines
+#                                        of NAME.service, appears in the alert
+#
+# NAME becomes the check's slug, prefixed with dell-wyse- unless it already is.
+# The systemd units pass their own name (%N).
+# A check is created by its first ping (?create=1);
+# set its period and grace time in the dashboard afterwards.
+# Reads HC_PING_KEY from /etc/dell-wyse/host.env and does nothing while it is empty.
+set -u
+
+[ $# -ge 1 ] || { echo "Usage: $0 NAME [fail [TEXT]]" >&2; exit 2; }
+HC_PING_KEY=
+[ -r /etc/dell-wyse/host.env ] && . /etc/dell-wyse/host.env
+if [ -z "$HC_PING_KEY" ]; then
+  echo "HC_PING_KEY is empty in /etc/dell-wyse/host.env; not pinging" >&2
+  exit 0
+fi
+
+case $1 in
+  dell-wyse-*) slug=$1 ;;
+  *) slug=dell-wyse-$1 ;;
+esac
+url="https://hc-ping.com/$HC_PING_KEY/$slug"
+body=
+if [ "${2:-}" = fail ]; then
+  url="$url/fail"
+  body=${3:-$(journalctl -q -u "$slug.service" -n 40 --no-pager -o short-iso 2>&1)}
+fi
+
+printf '%s' "$body" | curl -fsS -m 10 --retry 5 -o /dev/null --data-binary @- "$url?create=1"

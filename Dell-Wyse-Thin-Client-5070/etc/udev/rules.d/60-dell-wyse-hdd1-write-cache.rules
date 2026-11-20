@@ -1,0 +1,8 @@
+# Dell Wyse 5070 (hostname dell-wyse): send cache flushes to HDD 1.
+# HDD 1's USB bridge (WD Elements 2621) hides the drive's caching mode page,
+# so the kernel assumes "write through" and never sends a flush, although the drive's own write cache is on.
+# BTRFS relies on these flushes to keep its commits consistent across a power cut.
+# "temporary" changes only the kernel's view; nothing is written to the drive.
+# HDD 1's LUKS mapping inherits the setting when it is opened, at boot or when the disk is attached later.
+# The serial is the USB bridge's: udevadm info -a -n /dev/disk/by-id/usb-WD_Elements_2621_*-0:0
+ACTION=="add", SUBSYSTEM=="scsi_disk", ATTRS{idVendor}=="1058", ATTRS{idProduct}=="2621", ATTRS{serial}=="57583632443334335444584A", ATTR{cache_type}="temporary write back"
