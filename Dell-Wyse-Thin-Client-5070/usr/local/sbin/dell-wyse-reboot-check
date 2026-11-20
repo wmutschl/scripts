@@ -249,7 +249,7 @@ fi
 echo
 if [ "$blocked" = 1 ]; then
   echo "NOT safe to reboot yet: clear the BUSY lines above, then run this again."
-  echo "  progress of a send:  sudo dell-wyse-btrbk-progress"
+  echo "  progress of a send:  dell-wyse-btrbk-progress"
   echo "  follow a job:        sudo journalctl -fu dell-wyse-btrbk-send -u dell-wyse-offsite"
   exit 1
 fi

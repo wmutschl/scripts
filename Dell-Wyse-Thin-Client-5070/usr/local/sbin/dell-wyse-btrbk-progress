@@ -2,11 +2,10 @@
 # Dell Wyse 5070 (hostname dell-wyse): progress of the running BTRBK send to HDD 1,
 # and how much the next send will carry.
 #
-#   sudo dell-wyse-btrbk-progress [SUBVOLUME]
+#   dell-wyse-btrbk-progress [SUBVOLUME]
 #
 # With a send running, it reports that send: its size, how much is sent, what is left,
-# the average rate and the expected end, then what the next send of the same subvolume
-# carries so far.
+# the average rate and the expected end, then what the next send of the same subvolume carries so far.
 # Without a send, it reports only the next send of SUBVOLUME (default @nextcloud),
 # measured against its latest copy on HDD 1, at the rate in DEFAULT_RATE.
 #
@@ -14,6 +13,7 @@
 # The send carries every new or changed file, so after large deletions it can be bigger.
 # Progress is the number of stream bytes btrfs receive has read, which is exact.
 # du walks the snapshots and the live subvolume, about a minute each on the SSD; it only reads.
+# Installed in /usr/local/sbin with the other dell-wyse-* scripts (guide section 7); asks for sudo itself.
 set -euo pipefail
 
 TOP=/mnt/wyse-top
@@ -22,7 +22,7 @@ TARGET=/mnt/btrbk/wyse
 # HDD 1 (drive-managed SMR) measured 2.9-3.4 MB/s during a 219 GiB send on 2026-11-18
 DEFAULT_RATE=3000000
 
-[ "$(id -u)" = 0 ] || { echo "Run with sudo: sudo $0" >&2; exit 1; }
+[ "$(id -u)" = 0 ] || exec sudo "$0" "$@"
 
 size() { du -s --block-size=1 "$1" | cut -f1; }
 gib() { awk -v b="$1" 'BEGIN { printf "%6.1f GiB", b / 2^30 }'; }
