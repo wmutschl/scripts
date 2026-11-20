@@ -1,437 +1,160 @@
-# Backup and Installation Scripts
-These are the scripts I use for my [backup strategy](https://mutschler.eu/linux/backup) and my [installation guides](https://mutschler.eu/linux/install-guides).
+# Deployment and host configuration of my machines
 
-## .env files
-Copy the machine specific env file and name it `.env`.
+Compose files, host configuration, systemd and launchd jobs, and scripts for my Raspberry Pi 4 with Home Assistant OS, my Dell Wyse 5070 with Nextcloud AIO, and my Mac mini M4 Pro with Gitea and modCraft.
+My guides on [mutschler.dev](https://mutschler.dev) explain every step; they clone this repository and use the files from there.
+On the Wyse and the Mac mini, the clone lives in `~/scripts`, and the compose stacks run from it.
+Folders such as `etc/`, `usr/` and `Library/LaunchAgents/` mirror the target paths of their files.
+The filled-in `.env` files stay out of Git ([`.gitignore`](.gitignore)).
 
-## Crontab
-You can overwrite the current crontab with the machine specific one, but remember to adjust the healthchecks.io ping address manually.
-Depending on the machine, you might have to use sudo:
-```sh
-sudo crontab xyz-crontab.txt
-sudo crontab -e
-```
-On macOS, you might want to use nano to edit the crontab:
-```sh
-crontab xyz-crontab.txt
-export EDITOR=nano
-crontab -e
-```
+## Raspberry Pi 4 Model B
 
-## Container settings
+Runs Home Assistant OS with Zigbee2MQTT on a Sonoff Zigbee 3.0 USB Dongle Plus.
+It sends a daily encrypted backup to the Samba share on the Dell Wyse and pings healthchecks.io every minute.
+Guide: [Home Assistant OS on a Raspberry Pi 4: clean install and restore from backup](https://mutschler.dev/linux/raspi-home-assistant-os/); [Step 8](https://mutschler.dev/linux/raspi-home-assistant-os/#step-8-restore-from-a-backup) restores it from a backup.
 
-### Swag container
-After starting the [SWAG container](https://docs.linuxserver.io/general/swag), change the security settings in the `$HOME/docker/swag/nginx/ssl.conf` file. That is, enable HSTS and uncomment all optional headers for additional security, see this [post for more information](https://discourse.linuxserver.io/t/further-discussion-on-optional-swag-headers/3367).
+| File | Purpose | Guide |
+|---|---|---|
+| [`Raspberry-Pi-4-Model-B/flash-haos.sh`](Raspberry-Pi-4-Model-B/flash-haos.sh) | macOS: writes the current Home Assistant OS image for the Pi 4 to an SD card or USB SSD and verifies the download, the image and the written disk | [Step 1, Option B](https://mutschler.dev/linux/raspi-home-assistant-os/#option-b-terminal-on-macos) |
+| [`Raspberry-Pi-4-Model-B/homeassistant/packages/healthchecks.yaml`](Raspberry-Pi-4-Model-B/homeassistant/packages/healthchecks.yaml) | Home Assistant package that pings healthchecks.io every minute; the ping URL goes into `secrets.yaml` | [Step 7](https://mutschler.dev/linux/raspi-home-assistant-os/#step-7-healthchecksio-heartbeat) |
 
-### Gitea settings
-My settings are given in the `gitea.app.ini` file. This needs to be renamed to app.ini and moved into the gitea directory.
+### After a change
 
-## Update firmware of Sonoff ZigBee Stick
-Check whether the current coordinator firmware of the stick  (zStack3x0) on the Zigbee2MQTT dashboard (for me port 8080): http://192.168.178.50:8080 under Settings - About. Check the `Coordinator-Version`, e.g. 20230507. Compare this with the latest version on [Koenkk/Z-Stack-firmware](https://github.com/Koenkk/Z-Stack-firmware/blob/master/coordinator/Z-Stack_3.x.0/CHANGELOG.md).
-If the firmware is outdated, SSH into the machine, install dependencies and clone repositories:
-```sh
-sudo apt install python3-pip python3-venv git
+- `flash-haos.sh` runs from a clone on a Mac: run `git pull` there before flashing.
+- `healthchecks.yaml`: paste the new content into `/homeassistant/packages/healthchecks.yaml` with Studio Code Server, check the configuration with `ha core check` and restart Home Assistant ([Step 7](https://mutschler.dev/linux/raspi-home-assistant-os/#step-7-healthchecksio-heartbeat)).
 
-git clone https://github.com/Koenkk/Z-Stack-firmware
-git clone https://github.com/JelmerT/cc2538-bsl.git
+## Dell Wyse 5070 Thin Client
 
-cd cc2538-bsl
-cp $HOME/Z-Stack-firmware/coordinator/Z-Stack_3.x.0/bin/CC1352P2_CC2652P_launchpad_coordinator_20240710.zip CC1352P2_CC2652P_launchpad_coordinator_20240710.zip
-unzip CC1352P2_CC2652P_launchpad_coordinator_20240710.zip
-rm CC1352P2_CC2652P_launchpad_coordinator_20240710.zip
+Runs Ubuntu Server 26.04 LTS on a LUKS-encrypted BTRFS SSD, which I unlock over SSH at boot, with Nextcloud All-in-One (AIO) in Docker behind a Tailscale sidecar.
+BTRBK takes hourly snapshots and sends them daily to an encrypted USB disk (HDD 1), AIO makes a daily Borg backup to a second disk (HDD 2), and a daily job mirrors the Borg repository and the Home Assistant backups to a Hetzner Storage Box.
+A Samba share collects the Home Assistant backups of the Pi, and each `dell-wyse-*` job reports to its own healthchecks.io check.
+Guides: [Ubuntu Server 26.04 LTS, BTRFS and Nextcloud AIO with a Tailscale sidecar](https://mutschler.dev/linux/wyse-ubuntu-nextcloud-aio/) and, for the hardware, [RAM and SSD upgrade, BIOS update and BIOS settings for a home server](https://mutschler.dev/linux/wyse-hardware/).
+A rebuild reuses the backup disks ([7.2.2](https://mutschler.dev/linux/wyse-ubuntu-nextcloud-aio/#722-rebuilding-the-wyse-reuse-the-hdds)), restores the Borg repository and the Home Assistant backups from the Storage Box if HDD 2 is lost ([7.7](https://mutschler.dev/linux/wyse-ubuntu-nextcloud-aio/#77-restore-from-the-storage-box)) and reinstalls Nextcloud from an AIO backup ([9.4](https://mutschler.dev/linux/wyse-ubuntu-nextcloud-aio/#94-path-b-reinstall-from-an-aio-backup)).
+What it needs from outside the Wyse is listed in [10.2](https://mutschler.dev/linux/wyse-ubuntu-nextcloud-aio/#102-host-configuration-and-recovery-material).
 
-bash # make sure you are in bash and not in fish
-python3 -m venv sonoff
-source sonoff/bin/activate
-pip install wheel pyserial intelhex python-magic
-pip install .
-```
+| File | Purpose | Guide |
+|---|---|---|
+| [`Dell-Wyse-Thin-Client-5070/docker-compose.yml`](Dell-Wyse-Thin-Client-5070/docker-compose.yml) | Tailscale sidecar and AIO mastercontainer, compose project `dell-wyse` | [9.2](https://mutschler.dev/linux/wyse-ubuntu-nextcloud-aio/#92-configure-the-deployment-on-the-wyse) |
+| [`Dell-Wyse-Thin-Client-5070/dell-wyse.env`](Dell-Wyse-Thin-Client-5070/dell-wyse.env) | Template for `.env` next to the compose file: OAuth secret, node name, serve configuration and data directory | [9.2](https://mutschler.dev/linux/wyse-ubuntu-nextcloud-aio/#92-configure-the-deployment-on-the-wyse) |
+| [`Dell-Wyse-Thin-Client-5070/host.env.example`](Dell-Wyse-Thin-Client-5070/host.env.example) | Template for `/etc/dell-wyse/host.env`: healthchecks.io ping key and the Storage Box settings | [7](https://mutschler.dev/linux/wyse-ubuntu-nextcloud-aio/#7-backup-disks-snapshots-alerts-and-the-home-assistant-share) |
+| [`Dell-Wyse-Thin-Client-5070/etc/ssh/sshd_config.d/00-local-hardening.conf`](Dell-Wyse-Thin-Client-5070/etc/ssh/sshd_config.d/00-local-hardening.conf) | Key-only SSH; local forwarding stays on for the break-glass tunnel to the AIO interface | [5.5](https://mutschler.dev/linux/wyse-ubuntu-nextcloud-aio/#55-key-only-ssh-verified-before-password-login-is-disabled) |
+| [`Dell-Wyse-Thin-Client-5070/etc/dracut.conf.d/90-dell-wyse.conf`](Dell-Wyse-Thin-Client-5070/etc/dracut.conf.d/90-dell-wyse.conf) | Host-only initrd with networking and bash for dracut-sshd | [5.7](https://mutschler.dev/linux/wyse-ubuntu-nextcloud-aio/#57-unlocking-the-system-disk-over-ssh) |
+| [`Dell-Wyse-Thin-Client-5070/etc/systemd/system/docker.service.d/storage.conf`](Dell-Wyse-Thin-Client-5070/etc/systemd/system/docker.service.d/storage.conf), [`containerd.service.d/storage.conf`](Dell-Wyse-Thin-Client-5070/etc/systemd/system/containerd.service.d/storage.conf) | Docker and containerd start only on top of their BTRFS subvolumes | [6.1](https://mutschler.dev/linux/wyse-ubuntu-nextcloud-aio/#61-safeguards-before-dockers-first-start) |
+| [`Dell-Wyse-Thin-Client-5070/etc/docker/daemon.json`](Dell-Wyse-Thin-Client-5070/etc/docker/daemon.json) | `local` log driver | [6.1](https://mutschler.dev/linux/wyse-ubuntu-nextcloud-aio/#61-safeguards-before-dockers-first-start) |
+| [`Dell-Wyse-Thin-Client-5070/etc/btrbk/btrbk.conf`](Dell-Wyse-Thin-Client-5070/etc/btrbk/btrbk.conf) | Snapshots on the SSD and their copies on HDD 1, with retention | [7.3](https://mutschler.dev/linux/wyse-ubuntu-nextcloud-aio/#73-hourly-snapshots-and-daily-sendreceive-with-btrbk) |
+| [`Dell-Wyse-Thin-Client-5070/etc/smartd.conf`](Dell-Wyse-Thin-Client-5070/etc/smartd.conf) | SMART monitoring and self-tests of all three disks | [7.4](https://mutschler.dev/linux/wyse-ubuntu-nextcloud-aio/#74-disk-health-monthly-scrub-and-smart-monitoring) |
+| [`Dell-Wyse-Thin-Client-5070/etc/samba/smb.conf`](Dell-Wyse-Thin-Client-5070/etc/samba/smb.conf) | SMB 3 share `ha-backups` for the Home Assistant backups, open only to the Pi | [7.5](https://mutschler.dev/linux/wyse-ubuntu-nextcloud-aio/#75-backup-share-for-home-assistant) |
+| [`Dell-Wyse-Thin-Client-5070/etc/udev/rules.d/60-dell-wyse-hdd1-write-cache.rules`](Dell-Wyse-Thin-Client-5070/etc/udev/rules.d/60-dell-wyse-hdd1-write-cache.rules) | Cache flushes for HDD 1, whose USB bridge hides the drive's write cache | [7.2.3](https://mutschler.dev/linux/wyse-ubuntu-nextcloud-aio/#723-unlock-and-mount-the-hdds-at-boot) |
+| [`Dell-Wyse-Thin-Client-5070/etc/systemd/system/`](Dell-Wyse-Thin-Client-5070/etc/systemd/system/) | The `dell-wyse-*` services and timers of the snapshots, the send/receive, the off-site mirror, the scrub, the Home Assistant backup check and the uptime ping, and `dell-wyse-fail@.service` for their failure pings | [7](https://mutschler.dev/linux/wyse-ubuntu-nextcloud-aio/#7-backup-disks-snapshots-alerts-and-the-home-assistant-share) |
+| [`Dell-Wyse-Thin-Client-5070/usr/local/sbin/dell-wyse-hc-ping`](Dell-Wyse-Thin-Client-5070/usr/local/sbin/dell-wyse-hc-ping) | Success and failure pings to healthchecks.io | [7.1](https://mutschler.dev/linux/wyse-ubuntu-nextcloud-aio/#71-alerts-to-healthchecksio) |
+| [`Dell-Wyse-Thin-Client-5070/usr/local/sbin/dell-wyse-offsite`](Dell-Wyse-Thin-Client-5070/usr/local/sbin/dell-wyse-offsite) | Mirror of the Borg repository and the Home Assistant backups on the Storage Box | [7.6](https://mutschler.dev/linux/wyse-ubuntu-nextcloud-aio/#76-off-site-mirror-on-a-hetzner-storage-box) |
+| [`Dell-Wyse-Thin-Client-5070/usr/local/sbin/dell-wyse-ha-backup-check`](Dell-Wyse-Thin-Client-5070/usr/local/sbin/dell-wyse-ha-backup-check) | Fails unless Home Assistant delivered a backup within the last 26 hours | [7.5.3](https://mutschler.dev/linux/wyse-ubuntu-nextcloud-aio/#753-checks) |
+| [`Dell-Wyse-Thin-Client-5070/usr/local/sbin/dell-wyse-smartd-alert`](Dell-Wyse-Thin-Client-5070/usr/local/sbin/dell-wyse-smartd-alert) | Forwards smartd's findings to healthchecks.io instead of mail | [7.4](https://mutschler.dev/linux/wyse-ubuntu-nextcloud-aio/#74-disk-health-monthly-scrub-and-smart-monitoring) |
+| [`Dell-Wyse-Thin-Client-5070/usr/local/sbin/dell-wyse-btrbk-progress`](Dell-Wyse-Thin-Client-5070/usr/local/sbin/dell-wyse-btrbk-progress) | Progress of the running BTRBK send to HDD 1, and how much the next send will carry | [11.1](https://mutschler.dev/linux/wyse-ubuntu-nextcloud-aio/#111-catch-up-on-missed-daily-sends) |
+| [`Dell-Wyse-Thin-Client-5070/usr/local/sbin/dell-wyse-reboot-check`](Dell-Wyse-Thin-Client-5070/usr/local/sbin/dell-wyse-reboot-check) | Tells whether a reboot would interrupt a job or break the SSH unlock | [11.3](https://mutschler.dev/linux/wyse-ubuntu-nextcloud-aio/#113-reboot-the-wyse) |
 
-Shut down the process that uses the stick, e.g. Zigbee2MQTT, and find out the port:
-```sh
-docker compose -f $HOME/scripts/thinclient-docker-compose.yml down
+### After a change
 
-ls -la /dev/serial/by-id/
-# lrwxrwxrwx 1 root root 13 Oct 17 08:36 usb-Silicon_Labs_Sonoff_Zigbee_3.0_USB_Dongle_Plus_0001-if00-port0 -> ../../ttyUSB0
-```
-
-Flash the firmware:
-```sh
-sudo python3 cc2538-bsl.py -p /dev/ttyUSB0 -e -v -w --bootloader-sonoff-usb CC1352P2_CC2652P_launchpad_coordinator_20240710.hex
-
-deactivate
-```
-
-Restart the process that uses the stick, e.g. Zigbee2MQTT:
-```sh
-docker compose -f $HOME/scripts/thinclient-docker-compose.yml up -d
-```
-
-## Nextcloud All-in-One (AIO) on macOS using Tailscale serve as sidecar
-This setup uses the official Nextcloud All-in-One (AIO) image to create a secure and fully-managed Nextcloud instance:
-
-1. **Nextcloud AIO mastercontainer**: Manages the entire Nextcloud stack and required services.
-
-2. **Tailscale sidecar container**: Provides secure access without exposing ports to your local network
-
-**Key Benefits:**
-- All-in-one solution with automatic updates
-- Built-in backup and restore capabilities
-- Optimized performance out-of-the-box
-- No manual database or Redis configuration needed
-- Secure by default (no ports exposed to local network)
-
-For secure access, we use Tailscale serve to restrict access to only authorized machines on your tailnet.
-Your tailnet name (e.g., `tailnet-name`) can be found in the Tailscale Admin panel under DNS settings.
-
-Once configured, your Nextcloud will be accessible at `https://<hostname>.tailnet-name.ts.net` with automatic SSL certificate management via Tailscale HTTPS.
-For public internet access, you can enable Tailscale funnel by setting `AllowFunnel` to `true` in `tailscale-config/tailscale-nextcloud.json` (not recommended for security reasons).
-
-### Tailscale setup
-Go to the Tailscale Admin Panel and under DNS make note of your tailnet name. Also make sure MagicDNS is enabled.
-
-Then go to `Access controls` and make sure you have a tag for containers under `tagOwners`, e.g. `tag:container` (this is required for the tailscale sidecar to work):
-```sh
-	// Define the tags which can be applied to devices and by which users.
-	"tagOwners": {
-		"tag:container": ["autogroup:admin"],
-	},
-```
-
-Next, go to Settings and OAuth clients to `Generate OAuth client` with the following scopes:
-- Devices - Core: Read and Write (add `tag:container` under Tags)
-- Keys - OAuth Keys: Read and Write
-The `Client secret` is the `TAILSCALE_OAUTH_KEY` key you need to add to the `.env` file (below).
-
-### Orbstack setup
-Orbstack is a lightweight alternative to Docker Desktop, so I use it and install it via brew:
-```sh
-brew install orbstack
-```
-Run it, install the helper and go through the wizard (What do you want to use? -> Docker).
-Change the settings to your needs, for me I enable `Start at login` and `Automatically download updates`.
-
-### Docker compose setup
-Make sure you work in the `scripts` directory:
-```sh
-cd $HOME/scripts
-```
-Copy the `mac.env` file to `.env` and add values for:
-- `TAILSCALE_OAUTH_KEY`: Your OAuth client secret from Tailscale (see above)
-- `TAILSCALE_HOSTNAME`: The hostname for your Nextcloud (e.g., `cloud` will become `cloud.tailnet-name.ts.net`)
-- `HOME`: Your home directory path (e.g., `/Users/wmutschl`) - for custom data directory
+The compose stack runs straight from the clone, while the files under `etc/` and `usr/` are copies on the host.
+The loop from [10.2](https://mutschler.dev/linux/wyse-ubuntu-nextcloud-aio/#102-host-configuration-and-recovery-material) compares those copies with the repository: `-` lines are the host's and `+` lines the repository's, and a file missing on the host shows up as `No such file or directory`.
+No output means that every file under `etc/` and `usr/` matches its copy; files that exist only on the host do not show up.
+Run it before the pull, to see changes made on the host that the repository lacks:
 
 ```sh
-cp mac.env .env
-nano .env
+cd ~/scripts/Dell-Wyse-Thin-Client-5070
+find etc usr -type f | while read -r f; do diff -u "/$f" "$f"; done
 ```
 
-Review the docker compose file and tailscale config:
-```sh
-nano mac-docker-compose.yml
-nano tailscale-config/tailscale-nextcloud.json
-```
-
-**Security options in `tailscale-nextcloud.json`:**
-- `AllowFunnel`: Set to `false` for Tailscale-only access (recommended for security)
-- Port `8080`: Admin interface access (for initial setup and management)
-- Port `443`: Main Nextcloud access (after setup is complete)
-
-Run the containers:
-```sh
-docker compose -f mac-docker-compose.yml up -d
-
-# Monitor the logs to ensure everything starts correctly
-docker compose -f mac-docker-compose.yml logs -f
-```
-
-### Initial setup via web interface
-
-**Step 1: Access the AIO admin interface**
-
-Open your browser and navigate to (replace `cloud` with your chosen hostname):
-```
-https://cloud.tailnet-name.ts.net:8080
-```
-
-**Important:** You must use port `:8080` for the initial setup!
-
-**Step 2: Copy the initial password**
-
-You'll see the AIO interface with an automatically generated password displayed. Copy this password - you'll need it immediately.
-
-**Step 3: Enter the password and configure**
-
-1. Paste the password when prompted
-2. Enter your domain: `cloud.tailnet-name.ts.net` (without the `:8080` port!)
-3. Select timezone and location
-4. Choose which optional containers to install
-
-**Step 4: Start installation**
-
-Click "Start containers" and wait 5-10 minutes for the installation to complete. The process will:
-- Download all required Docker images
-- Set up PostgreSQL database
-- Configure Redis cache
-- Set up Apache web server
-- Generate SSL certificates
-- Initialize Nextcloud
-
-**Step 5: Access your Nextcloud**
-
-Once complete, access your Nextcloud at:
-```
-https://cloud.tailnet-name.ts.net
-```
-
-The initial admin username will be shown in the AIO interface along with the password.
-
-### Post-installation
-
-**Backup configuration:**
-- AIO includes built-in backup using BorgBackup
-- Configure backups in the AIO interface at `https://cloud.tailnet-name.ts.net:8080`
-- Recommended: Set up automated daily backups
-
-**Security hardening:**
-- ✅ No ports exposed to local network (Tailscale-only access)
-- ✅ Jumbo frames enabled for better container-to-container performance
-- ✅ Automatic HTTPS via Tailscale certificates
-- ✅ Regular security updates via AIO's built-in update mechanism
-
-**Monitoring:**
-Check container status:
-```sh
-docker compose -f mac-docker-compose.yml ps
-docker compose -f mac-docker-compose.yml logs -f
-```
-
-**Troubleshooting:**
-- If you can't access the interface, ensure you're connected to Tailscale
-- Check logs: `docker compose -f mac-docker-compose.yml logs nextcloud-tailscale`
-- Verify Tailscale hostname: `docker exec nextcloud-tailscale tailscale status`
-- For full documentation: https://github.com/nextcloud/all-in-one
-
-### Post-installation tasks
-
-After the initial setup, perform these maintenance and configuration tasks:
-
-**1. Remove MIME type warning:**
-```sh
-docker exec --user www-data nextcloud-aio-nextcloud php occ maintenance:repair --include-expensive
-```
-
-**2. Set default phone region:**
-```sh
-docker exec --user www-data nextcloud-aio-nextcloud php occ config:system:set default_phone_region --value="DE"
-```
-
-**3. Enable Full Text Search with Elasticsearch** (if the fulltextsearch container is enabled):
-
-Allow "untested app" in the Nextcloud web UI for the three fulltextsearch apps (Settings → Apps → search for each app).
-
-Then enable and configure the apps:
-```sh
-# Enable apps
-docker exec --user www-data nextcloud-aio-nextcloud php occ app:enable fulltextsearch
-docker exec --user www-data nextcloud-aio-nextcloud php occ app:enable fulltextsearch_elasticsearch
-docker exec --user www-data nextcloud-aio-nextcloud php occ app:enable files_fulltextsearch
-
-# Configure Elasticsearch
-docker exec --user www-data nextcloud-aio-nextcloud php occ fulltextsearch:configure '{"search_platform":"OCA\\FullTextSearch_Elasticsearch\\Platform\\ElasticSearchPlatform"}'
-docker exec --user www-data nextcloud-aio-nextcloud php occ config:app:set fulltextsearch_elasticsearch elastic_host --value="http://nextcloud-aio-fulltextsearch:9200"
-docker exec --user www-data nextcloud-aio-nextcloud php occ config:app:set fulltextsearch_elasticsearch elastic_index --value="nextcloud"
-
-# Test the configuration
-docker exec --user www-data nextcloud-aio-nextcloud php occ fulltextsearch:test
-
-# Index all files (this may take a while)
-docker exec --user www-data nextcloud-aio-nextcloud php occ fulltextsearch:index
-```
-
-New files will be automatically indexed via Nextcloud's background jobs.
-
-**4. Clear Nextcloud logs (optional):**
-```sh
-# Inside the Nextcloud container, or from macOS if datadir is accessible
-docker exec --user www-data nextcloud-aio-nextcloud truncate -s 0 /var/www/html/data/nextcloud.log
-```
-
-## Minecraft Server (Java Edition) on macOS
-
-Vanilla server based on [itzg/minecraft-server](https://github.com/itzg/docker-minecraft-server),
-reachable both from the LAN and from the tailnet.
-
-Three containers make it up:
-
-| Container | Purpose |
-| --- | --- |
-| `minecraft-tailscale` | Owns the network namespace. Publishes `25565` to the LAN and forwards the same port from the tailnet. |
-| `minecraft` | The server itself. |
-| `minecraft-backup` | Daily world snapshots, pruned after 14 days. |
-
-`minecraft` and `minecraft-backup` join the sidecar's namespace via
-`network_mode: service:minecraft-tailscale`, so they reach each other over
-`127.0.0.1`. Only 25565 is published to the LAN, so RCON (25575) is not
-reachable from the local network.
-
-### RCON exposure on the tailnet
-
-RCON *is* reachable from the tailnet, at `<tailscale-ip>:25575`. The sidecar
-runs in Tailscale userspace mode, and in that mode tailscaled forwards **any**
-inbound tailnet port to localhost inside the namespace - it is not limited to
-the ports listed in `tailscale-config/tailscale-minecraft.json`. The serve
-config gives a clean MagicDNS endpoint; it is not a filter. Kernel mode
-(`/dev/net/tun` + `NET_ADMIN`) behaves the same way, and `--shields-up` is not
-a workaround because it blocks Serve along with everything else.
-
-Anyone on the tailnet who reaches RCON still needs `MINECRAFT_RCON_PASSWORD`,
-which is why that must be a strong random value. To close it off properly,
-scope it in the tailnet policy file, e.g.:
-
-```json
-{
-  "action": "accept",
-  "src":    ["*"],
-  "dst":    ["tag:container:25565"]
-}
-```
-
-That only takes effect once the broad default `"dst": ["*:*"]` rule is removed,
-which affects every tagged container on the tailnet - including Nextcloud - so
-review the whole policy before changing it.
-
-### Setup
-
-**1. Add the Minecraft variables to your `.env`** (copy the block from `mac.env`)
-and set at least `MINECRAFT_RCON_PASSWORD`, `MINECRAFT_OPS` and
-`MINECRAFT_WHITELIST`:
+Carry such a change into the repository where you commit and push, and push it before you pull here; an edit made in the clone itself stops `git pull` as soon as the same file changes upstream.
+Then pull and run the loop again; now it shows the changes from the repository that the host lacks:
 
 ```sh
-openssl rand -base64 24
+git pull
+find etc usr -type f | while read -r f; do diff -u "/$f" "$f"; done
 ```
 
-Leaving `MINECRAFT_WHITELIST` empty disables the whitelist and lets anyone on the
-LAN or tailnet join.
+`git pull` lists the files it changed, including those at the folder's top level, which the loop skips.
+Work through them in this order ([5.3](https://mutschler.dev/linux/wyse-ubuntu-nextcloud-aio/#53-the-scripts-repository)):
 
-**2. Create the data directories:**
+1. Templates: carry new or changed settings from `dell-wyse.env` and `host.env.example` into `.env` and, with `sudoedit`, into `/etc/dell-wyse/host.env`; their comments say which values are read only once or must never change.
+2. `sudo docker compose up -d`, unless you stopped the stack on purpose: it applies changes to the compose file and `.env`, while a plain `restart` keeps the old settings ([10.6](https://mutschler.dev/linux/wyse-ubuntu-nextcloud-aio/#106-updates)).
+   A changed serve file in `Tailscale/` needs nothing more, as the sidecar re-applies it by itself ([9.2](https://mutschler.dev/linux/wyse-ubuntu-nextcloud-aio/#92-configure-the-deployment-on-the-wyse)).
+   A change to the `nextcloud-aio` service, such as its limits or `devices`, reaches AIO's own containers only when you stop and start them in the AIO interface ([9.5](https://mutschler.dev/linux/wyse-ubuntu-nextcloud-aio/#95-after-either-path-nextcloud-configuration)).
+3. Install every file that the loop shows, and apply it:
+   - Scripts: `sudo install -m 0755 usr/local/sbin/dell-wyse-* /usr/local/sbin/`; their next run uses them.
+   - Units: `sudo install -m 0644 etc/systemd/system/dell-wyse-* /etc/systemd/system/` and `sudo systemctl daemon-reload`, then check `systemctl list-timers 'dell-wyse-*'`, because a timer moved to a later time can start at once; a new timer also needs the `systemctl enable --now` line from its guide section.
+   - `btrbk.conf`: check it first with `sudo btrbk -c etc/btrbk/btrbk.conf dryrun`, which lists what a run would create and delete, then `sudo install -D -m 0644 etc/btrbk/btrbk.conf /etc/btrbk/btrbk.conf`; the next hourly run applies it to the snapshots on the SSD, the next daily send at 01:30 to the copies on HDD 1.
+   - `smb.conf`: check it first with `sudo testparm -s etc/samba/smb.conf`, then `sudo install -D -m 0644 etc/samba/smb.conf /etc/samba/smb.conf` and `sudo systemctl restart smbd`, but not while Home Assistant uploads its backup (04:45 to 05:45).
+   - `smartd.conf`: `sudo install -D -m 0644 etc/smartd.conf /etc/smartd.conf` and `sudo systemctl restart smartmontools.service`, then check with `sudo journalctl -u smartmontools.service -b --no-pager` that it found all three disks.
+   - `00-local-hardening.conf`: `sudo install -D -m 0644 etc/ssh/sshd_config.d/00-local-hardening.conf /etc/ssh/sshd_config.d/00-local-hardening.conf` and `sudo sshd -t && sudo systemctl reload ssh`; keep the current session open and log in from a second terminal before you close it.
+   - `90-dell-wyse.conf`: `sudo install -D -m 0644 etc/dracut.conf.d/90-dell-wyse.conf /etc/dracut.conf.d/90-dell-wyse.conf` and `sudo update-initramfs -u -k all`, then run `dell-wyse-reboot-check` before the next reboot.
+   - The udev rule: `sudo install -m 0644 etc/udev/rules.d/60-dell-wyse-hdd1-write-cache.rules /etc/udev/rules.d/`, `sudo udevadm control --reload` and `sudo udevadm trigger --action=add --settle --subsystem-match=scsi_disk`; HDD 1's LUKS mapping takes the setting over when it is next opened, at the latest at the next boot.
+   - `daemon.json` and the two `storage.conf` drop-ins: check `daemon.json` first with `sudo dockerd --validate --config-file=etc/docker/daemon.json`, then run their `install` lines from [6.1](https://mutschler.dev/linux/wyse-ubuntu-nextcloud-aio/#61-safeguards-before-dockers-first-start) and `sudo systemctl daemon-reload`; Docker and containerd use them from their next start on, at the next reboot or Docker package upgrade, and a changed log driver only reaches containers created afterwards.
+4. A file that the pull deleted or renamed (`delete mode` or `=>` in its summary) stays on the host: stop a removed timer with `sudo systemctl disable --now NAME.timer`, delete the old copies and run `sudo systemctl daemon-reload`.
+
+## Apple Mac mini M4 Pro
+
+My research workstation.
+In OrbStack it also runs Gitea with PostgreSQL and a Gitea Actions runner behind a Tailscale sidecar that only my tailnet can reach, and modCraft, from its own repository, behind a second sidecar with Funnel until modCraft moves to a VPS of its own.
+A daily Gitea backup lands in `~/Backups/gitea`, which Time Machine copies to an external SSD, and an uptime check runs every five minutes; both report to healthchecks.io.
+Guide: [Gitea with Actions CI and modCraft in OrbStack behind Tailscale sidecars](https://mutschler.dev/apple/mac-mini-gitea-modcraft/); restoring Gitea from a backup is part of the [restore drills](https://mutschler.dev/apple/mac-mini-gitea-modcraft/#104-restore-drills), and [10.5](https://mutschler.dev/apple/mac-mini-gitea-modcraft/#105-recovery-material) lists the recovery material.
+
+| File | Purpose | Guide |
+|---|---|---|
+| [`Apple-Mac-mini-M4-Pro/docker-compose.yml`](Apple-Mac-mini-M4-Pro/docker-compose.yml) | Gitea, PostgreSQL, the container runner and the sidecars of Gitea and modCraft, compose project `mac-mini` | [5](https://mutschler.dev/apple/mac-mini-gitea-modcraft/#5-configure-the-deployment) |
+| [`Apple-Mac-mini-M4-Pro/mac-mini.env`](Apple-Mac-mini-M4-Pro/mac-mini.env) | Template for `.env` next to the compose file: OAuth secret, node names, Gitea's domain and secrets, runner token, modCraft's serve configuration | [5](https://mutschler.dev/apple/mac-mini-gitea-modcraft/#5-configure-the-deployment) |
+| [`Apple-Mac-mini-M4-Pro/gitea-runner.yaml`](Apple-Mac-mini-M4-Pro/gitea-runner.yaml) | The container runner: labels, cache, jobs on the network `gitea-ci` without a Docker socket | [8](https://mutschler.dev/apple/mac-mini-gitea-modcraft/#8-gitea-actions-on-the-mac-mini) |
+| [`Apple-Mac-mini-M4-Pro/gitea-runner-host.yaml`](Apple-Mac-mini-M4-Pro/gitea-runner-host.yaml) | The optional runner directly on macOS (label `macos-arm64`), copied to `~/.config/gitea-runner/config.yaml` | [8.4](https://mutschler.dev/apple/mac-mini-gitea-modcraft/#84-optional-a-runner-directly-on-macos) |
+| [`Apple-Mac-mini-M4-Pro/host.env.example`](Apple-Mac-mini-M4-Pro/host.env.example) | Template for `~/.config/mac-mini/host.env`: healthchecks.io ping key, backup folder and how many runs it keeps, and how the uptime check reaches modCraft | [10.1](https://mutschler.dev/apple/mac-mini-gitea-modcraft/#101-healthchecksio-and-the-hosts-settings) |
+| [`Apple-Mac-mini-M4-Pro/gitea-mirror`](Apple-Mac-mini-M4-Pro/gitea-mirror) | Creates pull mirrors of all repositories of a GitHub user or organization, or a GitLab user or group; skips what exists | [7.3](https://mutschler.dev/apple/mac-mini-gitea-modcraft/#73-mirror-everything-with-gitea-mirror) |
+| [`Apple-Mac-mini-M4-Pro/mac-mini-gitea-backup`](Apple-Mac-mini-M4-Pro/mac-mini-gitea-backup) | Daily backup: stops Gitea briefly, `pg_dump` plus `gitea dump` into `~/Backups/gitea` | [10.3](https://mutschler.dev/apple/mac-mini-gitea-modcraft/#103-what-the-backup-contains) |
+| [`Apple-Mac-mini-M4-Pro/mac-mini-gitea-restore`](Apple-Mac-mini-M4-Pro/mac-mini-gitea-restore) | Restores such a backup into a fresh installation; refuses to overwrite data or to run with another `SECRET_KEY` | [10.4](https://mutschler.dev/apple/mac-mini-gitea-modcraft/#104-restore-drills) |
+| [`Apple-Mac-mini-M4-Pro/mac-mini-alive`](Apple-Mac-mini-M4-Pro/mac-mini-alive) | Uptime check of Gitea through the tailnet and, optionally, of modCraft; starts OrbStack if it stopped | [10.1](https://mutschler.dev/apple/mac-mini-gitea-modcraft/#101-healthchecksio-and-the-hosts-settings) |
+| [`Apple-Mac-mini-M4-Pro/mac-mini-hc-ping`](Apple-Mac-mini-M4-Pro/mac-mini-hc-ping) | Start, success and failure pings to healthchecks.io | [10.1](https://mutschler.dev/apple/mac-mini-gitea-modcraft/#101-healthchecksio-and-the-hosts-settings) |
+| [`Apple-Mac-mini-M4-Pro/Library/LaunchAgents/`](Apple-Mac-mini-M4-Pro/Library/LaunchAgents/) | The launchd jobs `local.mac-mini-gitea-backup`, `local.mac-mini-alive` and the optional `local.mac-mini-gitea-runner` | [10.2](https://mutschler.dev/apple/mac-mini-gitea-modcraft/#102-install-the-launchd-jobs), [8.4](https://mutschler.dev/apple/mac-mini-gitea-modcraft/#84-optional-a-runner-directly-on-macos) |
+
+### After a change
+
+The compose stack and the scripts run straight from the clone, also when launchd starts them; only the plists and the optional runner's configuration are copies ([10.6](https://mutschler.dev/apple/mac-mini-gitea-modcraft/#106-updates)).
+Pick a moment when the nightly backup is not running (no `/tmp/mac-mini-gitea-backup.lock`) and no CI job is busy:
 
 ```sh
-mkdir -p /Volumes/Docker/minecraft/data /Volumes/Docker/minecraft/backups
+cd ~/scripts && git pull && cd Apple-Mac-mini-M4-Pro
 ```
 
-**3. Start it:**
+`git pull` lists the files it changed; work through them in this order:
 
-```sh
-docker compose -f mac-docker-compose.yml up -d minecraft-tailscale minecraft minecraft-backup
-```
+1. Templates: carry new or changed settings from `mac-mini.env` and `host.env.example` into `.env` and `~/.config/mac-mini/host.env`; their comments say which values are read only once or must never change.
+2. If the pull changed `docker-compose.yml`, look at the change with `git diff ORIG_HEAD HEAD -- docker-compose.yml`.
+   If it changes the image tag of `gitea`, run `./mac-mini-gitea-backup` first and continue only after `backup complete`; a new major version of `gitea-db` needs the dump and restore from [10.6](https://mutschler.dev/apple/mac-mini-gitea-modcraft/#106-updates) before the next step.
+3. `docker compose up -d`, unless you stopped a service on purpose: it applies changes to the compose file and `.env`.
+   If it recreated `modcraft-tailscale`, check `docker logs modcraft-tailscale 2>&1 | grep 'disabled logging'` ([9.4](https://mutschler.dev/apple/mac-mini-gitea-modcraft/#94-updates)).
+4. Then, depending on what changed:
+   - A serve file in `Tailscale/`: restart its sidecar, `docker compose restart gitea-tailscale` for `gitea-serve.json` or `docker compose restart modcraft-tailscale` for the file named in `MODCRAFT_SERVE_CONFIG`; the `nextcloud-*.json` files need nothing here.
+   - `gitea-runner.yaml`: `docker compose up -d --force-recreate gitea-runner`.
+   - Scripts: nothing to do.
+   - A plist: compare it, e.g. `diff -u ~/Library/LaunchAgents/local.mac-mini-alive.plist Library/LaunchAgents/local.mac-mini-alive.plist`, copy it with `cp Library/LaunchAgents/local.mac-mini-alive.plist ~/Library/LaunchAgents/`, then reload it with `launchctl bootout gui/$(id -u)/local.mac-mini-alive` and `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.mac-mini-alive.plist`.
+   - `gitea-runner-host.yaml`, if the optional runner is in use: compare it with `~/.config/gitea-runner/config.yaml`, copy it there, and restart the runner with `launchctl kickstart -k gui/$(id -u)/local.mac-mini-gitea-runner`.
+   - A deleted or renamed plist: `launchctl bootout` its old label and delete the old copy from `~/Library/LaunchAgents/`.
 
-The first start downloads the server jar and generates the world, which takes a
-few minutes. Follow along with:
+## HP Elite Tower 800 G9
 
-```sh
-docker compose -f mac-docker-compose.yml logs -f minecraft
-```
+Planned as my next main server; no files yet.
 
-**4. Approve the machine** in the Tailscale admin console if your tailnet
-requires it, the same way as for `nextcloud`.
+## Tailscale
 
-### Connecting
+The three sidecars, one on the Wyse and two on the Mac mini, mount [`Tailscale/`](Tailscale/) read-only and load their serve configuration from it.
+All three set `TS_NO_LOGS_NO_SUPPORT=true`, so tailscaled uploads no client logs to Tailscale.
+The price is that Tailscale support cannot look at the logs of these nodes; modCraft's privacy policy relies on the setting.
 
-There is no web interface - a Minecraft server speaks its own TCP protocol, not
-HTTP, so opening `https://minecraft.tailnet-name.ts.net` in a browser
-just hangs. Connect from the game instead, via *Multiplayer -> Add Server*:
+| File | Purpose | Guide |
+|---|---|---|
+| [`Tailscale/nextcloud-funnel.json`](Tailscale/nextcloud-funnel.json) | Nextcloud on HTTPS 443, published through Funnel, and the AIO interface on 8080, tailnet only; the compose file's default | [Wyse 9.2](https://mutschler.dev/linux/wyse-ubuntu-nextcloud-aio/#92-configure-the-deployment-on-the-wyse) |
+| [`Tailscale/nextcloud-serve.json`](Tailscale/nextcloud-serve.json) | The same without Funnel, for a Nextcloud that only the tailnet can reach | [Wyse 9.2](https://mutschler.dev/linux/wyse-ubuntu-nextcloud-aio/#92-configure-the-deployment-on-the-wyse) |
+| [`Tailscale/gitea-serve.json`](Tailscale/gitea-serve.json) | Gitea on HTTPS 443 and Git over SSH on 22, tailnet only | [Mac 5](https://mutschler.dev/apple/mac-mini-gitea-modcraft/#5-configure-the-deployment) |
+| [`Tailscale/modcraft-funnel.json`](Tailscale/modcraft-funnel.json) | modCraft on HTTPS 443, published through Funnel; the compose file's default | [Mac 9.2](https://mutschler.dev/apple/mac-mini-gitea-modcraft/#92-build-and-start-modcraft-and-its-sidecar) |
+| [`Tailscale/modcraft-serve.json`](Tailscale/modcraft-serve.json) | The same without Funnel, for a modCraft that only the tailnet can reach | [Mac 9.5](https://mutschler.dev/apple/mac-mini-gitea-modcraft/#95-serve-instead-of-funnel) |
 
-- LAN: `192.168.178.65` (the `IP` from `.env`)
-- Tailnet: `minecraft.tailnet-name.ts.net`
+## Files of older guides
 
-No `https://` prefix and no `:25565` suffix - the default port is implied. A
-dedicated server never appears by itself in the client's LAN list, which only
-discovers single-player worlds shared with *Open to LAN*, so it has to be added
-by address once.
-
-The client version has to match the server exactly. Check what is running with:
-
-```sh
-docker exec minecraft rcon-cli version
-```
-
-Both use the default port, so no `:25565` suffix is needed in the client.
-
-### Operating
-
-```sh
-# Server console (Ctrl-p Ctrl-q to detach without stopping the server)
-docker attach minecraft
-
-# Or run single commands over RCON
-docker exec minecraft rcon-cli list
-docker exec minecraft rcon-cli whitelist list
-docker exec minecraft rcon-cli save-all
-
-# Trigger a backup immediately instead of waiting for the interval
-docker exec minecraft-backup backup now
-
-# Graceful stop (players get a 20s warning, chunks are flushed)
-docker compose -f mac-docker-compose.yml stop minecraft
-```
-
-Settings under `environment:` in `mac-docker-compose.yml` overwrite
-`server.properties` on every start, so change them there rather than in the file.
-
-### Ops and whitelist
-
-`MINECRAFT_OPS` and `MINECRAFT_WHITELIST` in `.env` seed `ops.json` and
-`whitelist.json`. To change either list, edit `.env` and recreate the container:
-
-```sh
-docker compose -f mac-docker-compose.yml up -d minecraft
-```
-
-`docker compose restart` is not enough - it reuses the old environment.
-
-`EXISTING_WHITELIST_FILE` is set to `MERGE`, so players added in-game with
-`/whitelist add` survive a restart. The trade-off is that removals must also
-happen in-game (`/whitelist remove`) - deleting a name from
-`MINECRAFT_WHITELIST` alone does not revoke access, because `MERGE` only ever
-adds. Switch it to `SYNCHRONIZE` if you want `.env` to be the sole source of
-truth.
-
-### Updating
-
-`MINECRAFT_VERSION=LATEST` pulls the newest release on every restart, which can
-lock out players still on an older client. Pin it (e.g. `26.1`) if that matters.
-
-If you pin an older version, check the Java requirement too. The server refuses
-to start with `UnsupportedClassVersionError` when the image's JRE is older than
-the jar - class file version 69 means Java 25, 65 means Java 21. Switch the
-image tag (`itzg/minecraft-server:java25` / `:java21`) to match.
-
-### Running a snapshot
-
-Set `MINECRAFT_VERSION` to a snapshot id and give it its own world, so the
-release world is left alone and you can switch back:
-
-```sh
-MINECRAFT_VERSION=26.3-snapshot-5
-MINECRAFT_LEVEL=world-26.3-snapshot
-```
-
-List the current ids, and check which Java a given one needs, with:
-
-```sh
-curl -s https://launchermeta.mojang.com/mc/game/version_manifest_v2.json | jq '.latest'
-```
-
-Players need a matching installation in the Minecraft Launcher: *Installations
--> New installation*, then tick **snapshots** in the version dropdown and pick
-the same id.
-
-Going back to the release is just the two variables again (`LATEST` and
-`world`) followed by `up -d minecraft`. Worlds are upgraded in place and never
-downgraded, which is why each version gets its own `MINECRAFT_LEVEL`.
-
-```sh
-docker compose -f mac-docker-compose.yml pull minecraft
-docker compose -f mac-docker-compose.yml up -d minecraft
-```
+Some older posts on mutschler.dev, such as [My backup strategy](https://mutschler.dev/stuff/backup/) and the post-installation guides for Ubuntu, Pop!_OS and Debian, refer to files that are no longer here, for example the Docker Compose and BTRBK files of my former server Simba and my restic and BTRFS maintenance scripts.
+They remain in the [Git history](https://github.com/wmutschl/scripts/commits/main/).
