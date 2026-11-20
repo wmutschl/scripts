@@ -92,10 +92,17 @@ if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
   fi
   # AIO stops its containers in order. They then stay stopped across the reboot
   # (restart policy unless-stopped) until you start them again in AIO.
+  # From the shell, AIO's /daily-backup.sh does the same with STOP_CONTAINERS=1 or START_CONTAINERS=1;
+  # without DAILY_BACKUP=1 it makes no backup. It gives the Nextcloud container its 600 s grace period,
+  # where the interface allows 10 s. The commands leave out -t: through a terminal, a Ctrl-C would cut
+  # the script off and leave daily_backup_running behind, and AIO would then start its full daily run
+  # when the mastercontainer starts again.
   nc=$(grep '^nextcloud-aio-' <<<"$running" | grep -Ev '^nextcloud-aio-(mastercontainer|borgbackup|watchtower) ')
   if [ -n "$nc" ]; then
     busy "Nextcloud is running: stop the containers in the AIO interface, then run this again:"
     detail "$nc"
+    printf '          or stop them from the shell:\n'
+    detail "sudo docker exec --env STOP_CONTAINERS=1 nextcloud-aio-mastercontainer /daily-backup.sh"
   else
     ok "Nextcloud's containers are stopped"
   fi
@@ -251,3 +258,4 @@ echo "  1. Have the SSD passphrase ready and a machine on the LAN for the unlock
 echo "  2. sync && sudo systemctl reboot"
 echo "  3. From the Mac: ssh -t dell-wyse-unlock systemd-tty-ask-password-agent"
 echo "  4. Start the containers again in the AIO interface (guide section 9.6); they stay stopped across the reboot."
+echo "     From the shell: sudo docker exec --env START_CONTAINERS=1 nextcloud-aio-mastercontainer /daily-backup.sh"
