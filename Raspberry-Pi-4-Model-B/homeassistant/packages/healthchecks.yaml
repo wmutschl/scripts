@@ -1,0 +1,29 @@
+# Home Assistant package: ping healthchecks.io every minute,
+# so I get an alert when Home Assistant, the Pi or its network is down.
+#
+# Target path: /homeassistant/packages/healthchecks.yaml (the configuration folder of Home Assistant).
+# Needs packages enabled in configuration.yaml:
+#   homeassistant:
+#     packages: !include_dir_named packages
+# and the ping URL of the check (period 1 minute, grace time 5 minutes) in secrets.yaml:
+#   healthchecks_ping_url: "https://hc-ping.com/<uuid-of-the-check>"
+# If configuration.yaml already defines rest_command healthchecks_ping, or an automation
+# "Healthchecks Ping" exists in the UI, remove those first; they would clash with this package.
+#
+# Guide: https://mutschler.dev/linux/raspi-home-assistant-os/
+rest_command:
+  healthchecks_ping:
+    url: !secret healthchecks_ping_url
+    method: get
+
+automation:
+  - id: healthchecks_ping
+    alias: Healthchecks Ping
+    description: Ping healthchecks.io every minute
+    triggers:
+      - trigger: time_pattern
+        minutes: "*"
+    conditions: []
+    actions:
+      - action: rest_command.healthchecks_ping
+    mode: single
