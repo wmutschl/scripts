@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!-- Apple Mac mini M4 Pro (hostname mac-mini): daily Gitea backup.
-     Installed as ~/Library/LaunchAgents/local.mac-mini-gitea-backup.plist; the paths assume the user wmutschl
-     and the scripts repository in ~/scripts, which is not a privacy-protected folder like ~/Documents. -->
+     Installed as ~/Library/LaunchAgents/local.mac-mini-gitea-backup.plist;
+     the paths assume the user wmutschl and the scripts repository in ~/scripts,
+     which is not a privacy-protected folder like ~/Documents. -->
 <plist version="1.0">
 <dict>
 	<key>Label</key>

@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!-- Apple Mac mini M4 Pro (hostname mac-mini): uptime ping every five minutes.
-     Installed as ~/Library/LaunchAgents/local.mac-mini-alive.plist; the paths assume the user wmutschl
-     and the scripts repository in ~/scripts. -->
+     Installed as ~/Library/LaunchAgents/local.mac-mini-alive.plist;
+     the paths assume the user wmutschl and the scripts repository in ~/scripts. -->
 <plist version="1.0">
 <dict>
 	<key>Label</key>

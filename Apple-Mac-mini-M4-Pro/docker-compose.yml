@@ -4,8 +4,7 @@
 #   cd ~/scripts/Apple-Mac-mini-M4-Pro
 #   docker compose up -d
 #
-# modCraft itself runs from its own repository (~/modCraft/website/compose.yaml);
-# only its Tailscale sidecar lives here.
+# modCraft itself runs from its own repository (~/modCraft/website/compose.yaml); only its Tailscale sidecar lives here.
 # Nothing is published on the Mac or the LAN: Gitea is reached through Tailscale Serve only.
 name: mac-mini
 
@@ -13,11 +12,10 @@ services:
   # ---------------------------------------------------------------------------
   # Gitea
   # ---------------------------------------------------------------------------
-  # The sidecar is the gitea node in the tailnet. Serve terminates HTTPS on 443 with the
-  # tailnet certificate and proxies to http://gitea:3000; TCP 22 is forwarded to Gitea's
-  # built-in SSH server on gitea:2222 (../Tailscale/gitea-serve.json).
-  # Gitea does not share the sidecar's network namespace, so in userspace mode every other
-  # tailnet port of this node is refused: nothing else listens in that namespace.
+  # The sidecar is the gitea node in the tailnet.
+  # Serve terminates HTTPS on 443 with the tailnet certificate and proxies to http://gitea:3000;
+  # TCP 22 is forwarded to Gitea's built-in SSH server on gitea:2222 (../Tailscale/gitea-serve.json).
+  # Gitea does not share the sidecar's network namespace, so in userspace mode every other tailnet port of this node is refused: nothing else listens in that namespace.
   gitea-tailscale:
     image: ghcr.io/tailscale/tailscale:latest
     container_name: gitea-tailscale
@@ -39,9 +37,10 @@ services:
       - no-new-privileges:true
     volumes:
       - gitea-tailscale-data:/var/lib/tailscale
-      # The repository's shared Tailscale/ folder, read-only (a directory mount). containerboot watches it and
-      # re-applies the serve configuration when it changes; whether OrbStack passes macOS-side edits on as file
-      # events is undocumented, so restart the sidecar after editing a serve file.
+      # The repository's shared Tailscale/ folder, read-only (a directory mount).
+      # containerboot watches it and re-applies the serve configuration when it changes;
+      # whether OrbStack passes macOS-side edits on as file events is undocumented,
+      # so restart the sidecar after editing a serve file.
       - ../Tailscale:/config:ro
     networks:
       - gitea
@@ -71,8 +70,9 @@ services:
       GITEA__server__SSH_PORT: 22 # shown in clone URLs; the sidecar forwards tailnet port 22
       GITEA__server__SSH_LISTEN_PORT: 2222 # the built-in SSH server inside the container
       GITEA__server__LFS_START_SERVER: true
-      # Without INSTALL_LOCK the web installer would run; with it, SECRET_KEY must be set here, or Gitea silently
-      # falls back to a public built-in key for 2FA seeds, Actions secrets and the credentials of pending migrations.
+      # Without INSTALL_LOCK the web installer would run; with it, SECRET_KEY must be set here,
+      # or Gitea silently falls back to a public built-in key for 2FA seeds,
+      # Actions secrets and the credentials of pending migrations.
       # Never change SECRET_KEY afterwards.
       GITEA__security__INSTALL_LOCK: true
       GITEA__security__SECRET_KEY: ${GITEA_SECRET_KEY:?Set GITEA_SECRET_KEY in .env}
@@ -134,8 +134,8 @@ services:
       - gitea-db
 
   # The runner registers once against http://gitea:3000, and its jobs use that address too:
-  # job containers join the gitea-ci network (gitea-runner.yaml), so checkout, artifacts and the
-  # cache work without the Mac's own Tailscale. Jobs get no Docker socket (docker_host "-").
+  # job containers join the gitea-ci network (gitea-runner.yaml), so checkout, artifacts and the cache work without the Mac's own Tailscale.
+  # Jobs get no Docker socket (docker_host "-").
   # The registration token is needed only while /data/.runner does not exist yet.
   gitea-runner:
     # Pinned: the runner (formerly act_runner) had three breaking major releases in 2026
@@ -149,14 +149,12 @@ services:
       CONFIG_FILE: /config.yaml
       GITEA_INSTANCE_URL: http://gitea:3000
       GITEA_RUNNER_REGISTRATION_TOKEN: ${GITEA_RUNNER_REGISTRATION_TOKEN:-}
-      # The runner's name in Gitea. Do not set `hostname:` instead: the runner finds its own container by its
-      # hostname, which must stay the container ID.
+      # The runner's name in Gitea. Do not set `hostname:` instead: the runner finds its own container by its hostname, which must stay the container ID.
       GITEA_RUNNER_NAME: mac-mini-docker
     volumes:
       - ./gitea-runner.yaml:/config.yaml:ro
       - gitea-runner-data:/data # .runner (its credentials), the cache and downloaded actions
-      # OrbStack's Docker engine, for the job containers. Whoever controls it is root in OrbStack's VM
-      # and can read every volume, so no job gets this socket.
+      # OrbStack's Docker engine, for the job containers. Whoever controls it is root in OrbStack's VM and can read every volume, so no job gets this socket.
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - gitea-ci
@@ -164,13 +162,12 @@ services:
   # ---------------------------------------------------------------------------
   # modCraft (Dynare model builder), until it moves to its own VPS
   # ---------------------------------------------------------------------------
-  # The app stack (Caddy, API, worker) lives in its own repo and is started from there with its
-  # unchanged compose.yaml, which publishes Caddy on 127.0.0.1:8080 only. This sidecar is the
-  # "existing HTTPS reverse proxy" from modCraft's website/deployment/README.md: Serve terminates
-  # HTTPS with the tailnet certificate and forwards to that loopback port via OrbStack's
-  # host.docker.internal, so the two stacks start and update independently.
-  # Serve keeps the original Host header, which is why modCraft's .env must list this node's
-  # MagicDNS name in MODCRAFT_SITE_ADDRESS.
+  # The app stack (Caddy, API, worker) lives in its own repo and is started from there
+  # with its unchanged compose.yaml, which publishes Caddy on 127.0.0.1:8080 only.
+  # This sidecar is the "existing HTTPS reverse proxy" from modCraft's website/deployment/README.md:
+  # Serve terminates HTTPS with the tailnet certificate and forwards to that loopback port
+  # via OrbStack's host.docker.internal, so the two stacks start and update independently.
+  # Serve keeps the original Host header, which is why modCraft's .env must list this node's MagicDNS name in MODCRAFT_SITE_ADDRESS.
   modcraft-tailscale:
     image: ghcr.io/tailscale/tailscale:latest
     container_name: modcraft-tailscale
@@ -185,8 +182,8 @@ services:
       - TS_STATE_DIR=/var/lib/tailscale
       - TS_AUTH_ONCE=true
       - TS_NO_LOGS_NO_SUPPORT=true # no client-log upload to Tailscale; modCraft's privacy policy relies on it
-      # Userspace networking: no /dev/net/tun, no NET_ADMIN/NET_RAW. Nothing else shares this
-      # namespace, so the "every tailnet port is forwarded to localhost" behavior of this mode exposes nothing.
+      # Userspace networking: no /dev/net/tun, no NET_ADMIN/NET_RAW. Nothing else shares this namespace,
+      # so the "every tailnet port is forwarded to localhost" behavior of this mode exposes nothing.
       - TS_USERSPACE=true
     security_opt:
       - no-new-privileges:true

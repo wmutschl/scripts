@@ -1,18 +1,18 @@
 #!/bin/bash
-# Apple Mac mini M4 Pro (hostname mac-mini): daily Gitea backup, run by launchd
-# (Library/LaunchAgents/local.mac-mini-gitea-backup.plist). Running it by hand is safe.
+# Apple Mac mini M4 Pro (hostname mac-mini): daily Gitea backup, run by launchd (Library/LaunchAgents/local.mac-mini-gitea-backup.plist).
+# Running it by hand is safe.
 #
 # OrbStack keeps its volumes out of Time Machine, so this writes a consistent copy of Gitea into
 # GITEA_BACKUP_DIR (default ~/Backups/gitea), which Time Machine backs up:
 #   gitea-YYYYMMDD-HHMMSS/gitea-db.pgdump   pg_dump of the database (custom format, for pg_restore)
 #   gitea-YYYYMMDD-HHMMSS/gitea-dump.tar    gitea dump: repositories, LFS, attachments, packages,
 #                                           Actions logs, SSH host keys, app.ini and the database as SQL
-# Gitea is stopped meanwhile (seconds to minutes, depending on the size of the repositories), as its docs
-# require for a consistent dump; PostgreSQL keeps running. A Gitea that is running but not healthy, for example
-# while it migrates its database after an update, is not stopped: the backup fails instead.
-# The dump runs with the image the gitea container was created from, so a changed image tag in the compose
-# file does not affect it. Gitea is started again afterwards, also after an error, if it was running before,
-# and the run waits until Gitea answers again. Keeps the newest GITEA_BACKUP_KEEP runs; Time Machine keeps the history.
+# Gitea is stopped meanwhile (seconds to minutes, depending on the size of the repositories),
+# as its docs require for a consistent dump; PostgreSQL keeps running.
+# A Gitea that is running but not healthy, for example while it migrates its database after an update, is not stopped: the backup fails instead.
+# The dump runs with the image the gitea container was created from, so a changed image tag in the compose file does not affect it.
+# Gitea is started again afterwards, also after an error, if it was running before, and the run waits until Gitea answers again.
+# Keeps the newest GITEA_BACKUP_KEEP runs; Time Machine keeps the history.
 # The copies contain every secret of the instance (app.ini, mirror tokens in the repositories' git config).
 # Reports to healthchecks.io as mac-mini-gitea-backup. Settings: ~/.config/mac-mini/host.env.
 

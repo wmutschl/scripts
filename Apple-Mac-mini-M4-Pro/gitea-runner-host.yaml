@@ -21,8 +21,8 @@ runner:
   tool_cache_mode: shared
 
 cache:
-  # Off: the cache server would listen on all of the Mac's interfaces, the LAN included (with token
-  # authentication). To use actions/cache in macOS jobs, set it to true; jobs then reach it on loopback.
+  # Off: the cache server would listen on all of the Mac's interfaces, the LAN included (with token authentication).
+  # To use actions/cache in macOS jobs, set it to true; jobs then reach it on loopback.
   enabled: false
   host: 127.0.0.1
 

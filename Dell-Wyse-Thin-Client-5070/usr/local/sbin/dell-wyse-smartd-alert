@@ -1,6 +1,5 @@
 #!/bin/sh
-# Dell Wyse 5070 (hostname dell-wyse): smartd runs this (-M exec in /etc/smartd.conf)
-# when it finds a disk problem, instead of sending mail.
+# Dell Wyse 5070 (hostname dell-wyse): smartd runs this (-M exec in /etc/smartd.conf) when it finds a disk problem, instead of sending mail.
 # The message goes to the dell-wyse-smartd check on healthchecks.io.
 exec /usr/local/sbin/dell-wyse-hc-ping smartd fail \
   "${SMARTD_FULLMESSAGE:-smartd reported ${SMARTD_FAILTYPE:-a problem} on ${SMARTD_DEVICE:-a disk}: ${SMARTD_MESSAGE:-}}"

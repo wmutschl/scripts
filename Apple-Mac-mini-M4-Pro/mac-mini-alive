@@ -1,12 +1,11 @@
 #!/bin/bash
-# Apple Mac mini M4 Pro (hostname mac-mini): uptime check every five minutes, run by launchd
-# (Library/LaunchAgents/local.mac-mini-alive.plist).
+# Apple Mac mini M4 Pro (hostname mac-mini): uptime check every five minutes, run by launchd (Library/LaunchAgents/local.mac-mini-alive.plist).
 #
-# Pings mac-mini-alive when Gitea answers its health check at https://GITEA_DOMAIN/api/healthz, which takes
-# the Mac's own Tailscale app, OrbStack, Gitea's sidecar, Gitea and PostgreSQL; with MODCRAFT_CHECK_URL set
-# in ~/.config/mac-mini/host.env, modCraft's sidecar and Caddy as well. On the Mac, MagicDNS resolves modCraft's
-# name to the sidecar's tailnet address; with MODCRAFT_CHECK_FUNNEL=true the name is resolved through public DNS
-# (Cloudflare's DNS over HTTPS) instead, so the request takes the public route through Funnel.
+# Pings mac-mini-alive when Gitea answers its health check at https://GITEA_DOMAIN/api/healthz,
+# which takes the Mac's own Tailscale app, OrbStack, Gitea's sidecar, Gitea and PostgreSQL;
+# with MODCRAFT_CHECK_URL set in ~/.config/mac-mini/host.env, modCraft's sidecar and Caddy as well.
+# On the Mac, MagicDNS resolves modCraft's name to the sidecar's tailnet address;
+# with MODCRAFT_CHECK_FUNNEL=true the name is resolved through public DNS (Cloudflare's DNS over HTTPS) instead, so the request takes the public route through Funnel.
 # The check goes down when the Mac is off, waits at the FileVault unlock or the login window, or any of those fails.
 # If OrbStack is not running, it starts OrbStack and reports a failure; ~/.config/mac-mini/maintenance stops that.
 # While mac-mini-gitea-backup holds Gitea stopped (for at most an hour), Gitea is not checked.

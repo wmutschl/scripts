@@ -3,11 +3,10 @@
 #
 #   dell-wyse-reboot-check && sudo systemctl reboot
 #
-# Looks for anything that a reboot would interrupt: BTRBK snapshots and send/receive, the
-# off-site rsync, AIO's daily run with its Borg backup, Borg locks, running Nextcloud
-# containers, a Home Assistant upload, BTRFS scrub and balance, apt and dpkg.
-# It also checks the boot chain: the initrd of the kernel that boots next must open the SSD
-# and let you in over SSH (guide sections 3.3 and 5.7).
+# Looks for anything that a reboot would interrupt:
+# BTRBK snapshots and send/receive, the off-site rsync, AIO's daily run with its Borg backup,
+# Borg locks, running Nextcloud containers, a Home Assistant upload, BTRFS scrub and balance, apt and dpkg.
+# It also checks the boot chain: the initrd of the kernel that boots next must open the SSD and let you in over SSH (guide sections 3.3 and 5.7).
 # Exits 0 only when the reboot can start right away, and 1 otherwise.
 # "note" lines are hints that do not block the reboot.
 # Installed in /usr/local/sbin with the other dell-wyse-* scripts (guide section 7); asks for sudo itself.
@@ -64,10 +63,10 @@ if [ -n "$audit" ]; then
   detail "$audit"
 fi
 
-# 3. AIO. Its daily run updates the mastercontainer through nextcloud-aio-watchtower, pulls
-#    images, runs nextcloud-aio-borgbackup, and starts and updates the containers again.
-#    AIO creates daily_backup_running when the run starts and deletes it once the containers
-#    are started; daily-backup.sh then still waits for Nextcloud to come up.
+# 3. AIO. Its daily run updates the mastercontainer through nextcloud-aio-watchtower,
+#    pulls images, runs nextcloud-aio-borgbackup, and starts and updates the containers again.
+#    AIO creates daily_backup_running when the run starts and deletes it once the containers are started;
+#    daily-backup.sh then still waits for Nextcloud to come up.
 #    A run cut off by a reboot starts again after the boot, because the file stays.
 if [ -e "$AIO_DATA/daily_backup_running" ] || pgrep -f '/daily-backup\.sh' >/dev/null; then
   busy "AIO's daily run is in progress (update, backup, restart of the containers)"
@@ -90,13 +89,12 @@ if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
     busy "occ is running in the Nextcloud container; let it finish before you stop the containers:"
     detail "$occ"
   fi
-  # AIO stops its containers in order. They then stay stopped across the reboot
-  # (restart policy unless-stopped) until you start them again in AIO.
-  # From the shell, AIO's /daily-backup.sh does the same with STOP_CONTAINERS=1 or START_CONTAINERS=1;
-  # without DAILY_BACKUP=1 it makes no backup. It gives the Nextcloud container its 600 s grace period,
-  # where the interface allows 10 s. The commands leave out -t: through a terminal, a Ctrl-C would cut
-  # the script off and leave daily_backup_running behind, and AIO would then start its full daily run
-  # when the mastercontainer starts again.
+  # AIO stops its containers in order.
+  # They then stay stopped across the reboot (restart policy unless-stopped) until you start them again in AIO.
+  # From the shell, AIO's /daily-backup.sh does the same with STOP_CONTAINERS=1 or START_CONTAINERS=1; without DAILY_BACKUP=1 it makes no backup.
+  # It gives the Nextcloud container its 600 s grace period, where the interface allows 10 s.
+  # The commands leave out -t: through a terminal, a Ctrl-C would cut the script off and leave daily_backup_running behind,
+  # and AIO would then start its full daily run when the mastercontainer starts again.
   nc=$(grep '^nextcloud-aio-' <<<"$running" | grep -Ev '^nextcloud-aio-(mastercontainer|borgbackup|watchtower) ')
   if [ -n "$nc" ]; then
     busy "Nextcloud is running: stop the containers in the AIO interface, then run this again:"
@@ -110,9 +108,9 @@ else
   note "Docker is not running, so AIO could not be checked"
 fi
 
-# The Borg repository's locks, as dell-wyse-offsite checks them. Without a borg process or AIO's
-# backup container, a lock is left over from an interrupted run: a reboot changes nothing about
-# it, but dell-wyse-offsite waits four hours for it and then fails.
+# The Borg repository's locks, as dell-wyse-offsite checks them.
+# Without a borg process or AIO's backup container, a lock is left over from an interrupted run:
+# a reboot changes nothing about it, but dell-wyse-offsite waits four hours for it and then fails.
 repo=/mnt/backup/borg
 locks=$(ls -d "$repo"/lock.* 2>/dev/null)
 if [ -z "$locks" ]; then
@@ -125,8 +123,7 @@ else
   detail "$locks"
 fi
 
-# 4. Home Assistant writes its daily backup to the Samba share; a reboot cuts it off
-#    and can leave a truncated file behind.
+# 4. Home Assistant writes its daily backup to the Samba share; a reboot cuts it off and can leave a truncated file behind.
 recent=$(find /srv/ha-backups -type f -mmin -2 -printf '%f\n' 2>/dev/null)
 if [ -n "$recent" ]; then
   busy "Home Assistant is writing a backup to the share:"
@@ -153,9 +150,10 @@ for fs in / /mnt/btrbk /mnt/backup; do
   [ -n "$state" ] || ok "no scrub or balance on $fs"
 done
 
-# 6. SMART self-tests. A reboot aborts them, which does no harm, but smartd starts an aborted
-#    test again only at its next scheduled time. -n standby keeps smartctl from waking a
-#    sleeping disk, except HDD 2, whose USB bridge cannot report standby (see smartd.conf).
+# 6. SMART self-tests. A reboot aborts them, which does no harm,
+#    but smartd starts an aborted test again only at its next scheduled time.
+#    -n standby keeps smartctl from waking a sleeping disk,
+#    except HDD 2, whose USB bridge cannot report standby (see smartd.conf).
 tests=
 for d in /dev/disk/by-id/ata-* /dev/disk/by-id/usb-*; do
   [ -e "$d" ] || continue
@@ -170,8 +168,9 @@ else
   ok "no SMART self-test in progress"
 fi
 
-# 7. The boot chain. If the initrd can't open the SSD or let you in over SSH, the Wyse waits at a
-#    console prompt (guide sections 3.3 and 5.7). GRUB starts the newest installed kernel.
+# 7. The boot chain. If the initrd can't open the SSD or let you in over SSH,
+#    the Wyse waits at a console prompt (guide sections 3.3 and 5.7).
+#    GRUB starts the newest installed kernel.
 kver=$(linux-version list | linux-version sort | tail -n 1)
 img=/boot/initrd.img-$kver
 [ "$kver" = "$(uname -r)" ] || note "the reboot starts kernel $kver; $(uname -r) is running"
@@ -224,9 +223,8 @@ for t in $(systemctl list-units 'dell-wyse-*.timer' --no-legend --plain | awk '{
     note "$t fires in $((left / 60)) min"
   fi
 done
-# AIO's daily backup does not catch up: it starts only at its exact minute and skips the day
-# if the Wyse is down then. The time is HH:MM in UTC (the mastercontainer runs with TZ=Etc/UTC),
-# and a Unix day starts at 00:00 UTC.
+# AIO's daily backup does not catch up: it starts only at its exact minute and skips the day if the Wyse is down then.
+# The time is HH:MM in UTC (the mastercontainer runs with TZ=Etc/UTC), and a Unix day starts at 00:00 UTC.
 aio_time=$(head -n 1 "$AIO_DATA/daily_backup_time" 2>/dev/null)
 if [[ $aio_time =~ ^([01][0-9]|2[0-3]):([0-5][0-9])$ ]]; then
   aio_next=$((now - now % 86400 + 10#${BASH_REMATCH[1]} * 3600 + 10#${BASH_REMATCH[2]} * 60))

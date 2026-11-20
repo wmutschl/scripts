@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!-- Apple Mac mini M4 Pro (hostname mac-mini): optional macOS host runner for Gitea Actions.
-     Installed as ~/Library/LaunchAgents/local.mac-mini-gitea-runner.plist; the paths assume the user wmutschl
-     and Homebrew in /opt/homebrew. Used instead of `brew services`, whose launchd job stays down after a failed start. -->
+     Installed as ~/Library/LaunchAgents/local.mac-mini-gitea-runner.plist;
+     the paths assume the user wmutschl and Homebrew in /opt/homebrew.
+     Used instead of `brew services`, whose launchd job stays down after a failed start. -->
 <plist version="1.0">
 <dict>
 	<key>Label</key>

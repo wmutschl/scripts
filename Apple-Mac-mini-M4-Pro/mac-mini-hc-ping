@@ -3,14 +3,12 @@
 #
 #   mac-mini-hc-ping NAME              success ping
 #   mac-mini-hc-ping NAME start        start signal, so healthchecks.io measures the run time
-#   mac-mini-hc-ping NAME fail [TEXT]  failure ping; TEXT, or else the last 40 lines
-#                                       of ~/Library/Logs/mac-mini-NAME.log, appears in the alert
+#   mac-mini-hc-ping NAME fail [TEXT]  failure ping; TEXT, or else the last 40 lines of ~/Library/Logs/mac-mini-NAME.log, appears in the alert
 #
 # NAME becomes the check's slug, prefixed with mac-mini- unless it already is.
 # A check is created by its first ping (?create=1);
 # set its period and grace time in the dashboard afterwards.
-# Reads HC_PING_KEY from ~/.config/mac-mini/host.env (or the file in MAC_MINI_HOST_ENV)
-# and does nothing while it is empty.
+# Reads HC_PING_KEY from ~/.config/mac-mini/host.env (or the file in MAC_MINI_HOST_ENV) and does nothing while it is empty.
 set -u
 
 [ $# -ge 1 ] || { echo "Usage: $0 NAME [start | fail [TEXT]]" >&2; exit 2; }

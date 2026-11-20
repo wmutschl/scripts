@@ -4,8 +4,9 @@
 #   cd ~/scripts/Dell-Wyse-Thin-Client-5070
 #   sudo docker compose up -d
 #
-# Do not use `docker compose down` for this project: it would try to remove the
-# nextcloud-aio network while AIO's own containers are still attached to it.
+# Do not use `docker compose down` for this project:
+# it would try to remove the nextcloud-aio network
+# while AIO's own containers are still attached to it.
 # Stop and start Nextcloud through the AIO interface instead.
 # Keep the project name different from nextcloud-aio:
 # AIO labels its own containers with that compose project,
@@ -70,10 +71,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
       APACHE_PORT: 11000
-      # The sidecar reaches nextcloud-aio-apache:11000 over the nextcloud-aio network,
-      # so Apache is not published on the host at all.
-      # AIO's own Caddy community container uses the same value.
-      # The quotes are required in YAML.
+      # The sidecar reaches nextcloud-aio-apache:11000 over the nextcloud-aio network, so Apache is not published on the host at all.
+      # AIO's own Caddy community container uses the same value. The quotes are required in YAML.
       APACHE_IP_BINDING: "@INTERNAL"
       # AIO's domain check reaches its domaincheck container (it carries the nextcloud-aio-apache alias)
       # through the sidecar: with nextcloud-funnel.json over Funnel's public name,

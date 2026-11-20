@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
-# Dell Wyse 5070 (hostname dell-wyse): mirror AIO's Borg repository (HDD 2) and the
-# Home Assistant backups to a Hetzner Storage Box over SSH, after AIO's nightly backup.
+# Dell Wyse 5070 (hostname dell-wyse): mirror AIO's Borg repository (HDD 2)
+# and the Home Assistant backups to a Hetzner Storage Box over SSH, after AIO's nightly backup.
 # Run by dell-wyse-offsite.timer (section 7.6); settings are in /etc/dell-wyse/host.env.
 # OFFSITE_TARGET is a sub-account; borg/ and ha-backups/ are in its home directory, the only one it can see.
 #
 # Both are encrypted before they leave the Wyse:
 # Borg with AIO's Borg password, HA backups with the key from HA's emergency kit.
-# The copy is a mirror only:
-# never let AIO or Borg write to it; to restore from it, copy it back first (section 7.7).
+# The copy is a mirror only: never let AIO or Borg write to it; to restore from it, copy it back first (section 7.7).
 set -euo pipefail
 
 . /etc/dell-wyse/host.env
@@ -43,10 +42,11 @@ wait_idle() {
 }
 # Every committed Borg transaction (backup, prune, compact) writes a new index.N.
 transaction() { find "$repo" -maxdepth 1 -name 'index.*' -printf '%f\n' | sort; }
-# rsync exits 24 when a file it has listed is gone before it is sent: a segment that AIO's nightly
-# borg compact removed during a long copy, such as the first upload, or an HA backup that HA rotated.
-# Only the segment pass and the HA pass accept that; a compact also commits, so the transaction
-# check below repeats the copy.
+# rsync exits 24 when a file it has listed is gone before it is sent:
+# a segment that AIO's nightly borg compact removed during a long copy,
+# such as the first upload, or an HA backup that HA rotated.
+# Only the segment pass and the HA pass accept that;
+# a compact also commits, so the transaction check below repeats the copy.
 copy_vanished_ok() {
   local rc=0
   rsync "${opts[@]}" "$@" || rc=$?

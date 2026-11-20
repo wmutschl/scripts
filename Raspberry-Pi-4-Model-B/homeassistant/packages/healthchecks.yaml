@@ -7,10 +7,9 @@
 #     packages: !include_dir_named packages
 # and the ping URL of the check (period 1 minute, grace time 5 minutes) in secrets.yaml:
 #   healthchecks_ping_url: "https://hc-ping.com/<uuid-of-the-check>"
-# If configuration.yaml already defines rest_command healthchecks_ping, or an automation
-# "Healthchecks Ping" exists in the UI, remove those first; they would clash with this package.
-#
-# Guide: https://mutschler.dev/linux/raspi-home-assistant-os/
+# If configuration.yaml already defines rest_command healthchecks_ping,
+# or an automation "Healthchecks Ping" exists in the UI, remove those first;
+# they would clash with this package.
 rest_command:
   healthchecks_ping:
     url: !secret healthchecks_ping_url

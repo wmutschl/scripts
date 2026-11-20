@@ -6,22 +6,19 @@
 #   gitea-mirror [options] gitlab NAME
 #
 # Options:
-#   --to OWNER       Gitea user or organization that receives the mirrors (default: github or gitlab);
-#                    create it in Gitea first
+#   --to OWNER       Gitea user or organization that receives the mirrors (default: github or gitlab); create it in Gitea first
 #   --include-forks  also mirror forks
 #   --skip-archived  skip archived repositories
 #   --wiki           also mirror wikis that exist upstream (a wiki that disappears later breaks the sync)
 #   --lfs            also mirror Git LFS objects (counts against GitHub's LFS bandwidth)
-#   --interval DUR   sync interval as a Go duration, e.g. 8h or 30m, at least 10m; 0 stops the periodic syncs
-#                    after the first one (default 8h)
+#   --interval DUR   sync interval as a Go duration, e.g. 8h or 30m, at least 10m; 0 stops the periodic syncs after the first one (default 8h)
 #   --match REGEX    only repositories whose name matches this extended regular expression
 #   --dry-run        only list what would be mirrored
 #
 # Environment:
 #   GITEA_URL     e.g. https://gitea.tailnet-name.ts.net; default https://GITEA_DOMAIN from the .env next to this script
 #   GITEA_TOKEN   Gitea access token with the scopes write:repository and read:user (plus read:organization for --to ORG)
-#   GITHUB_TOKEN  read-only GitHub token (fine-grained: Contents read-only); required for private repositories,
-#                 recommended for public ones, as GitHub throttles anonymous clones
+#   GITHUB_TOKEN  read-only GitHub token (fine-grained: Contents read-only); required for private repositories, recommended for public ones, as GitHub throttles anonymous clones
 #   GITLAB_URL    default https://gitlab.com
 #   GITLAB_TOKEN  GitLab token with read_api and read_repository
 # The upstream token is stored with every mirror, in plain text in its git config inside Gitea,
@@ -94,8 +91,7 @@ if [ "$service" = github ]; then upstream_token=${GITHUB_TOKEN:-}; else upstream
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
-# The tokens go to curl in header files inside the private temporary folder, not on the command line,
-# where other users of the machine could read them with ps
+# The tokens go to curl in header files inside the private temporary folder, not on the command line, where other users of the machine could read them with ps
 printf 'Authorization: token %s\n' "$GITEA_TOKEN" >"$tmp/gitea.hdr"
 : >"$tmp/upstream.hdr"
 if [ -n "$upstream_token" ]; then
@@ -133,8 +129,7 @@ if [ "$code" != 200 ]; then
   [ "$code" = 200 ] || { echo "Gitea has no user or organization '$to' (HTTP $code); create it first" >&2; exit 1; }
 fi
 
-# The upstream repositories, one tab-separated line each:
-# gitea_name, clone_url, private, fork, archived, wiki_enabled, description
+# The upstream repositories, one tab-separated line each: gitea_name, clone_url, private, fork, archived, wiki_enabled, description
 : >"$tmp/repos"
 if [ "$service" = github ]; then
   api=https://api.github.com

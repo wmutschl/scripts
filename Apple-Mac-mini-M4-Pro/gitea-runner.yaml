@@ -1,5 +1,4 @@
-# Apple Mac mini M4 Pro (hostname mac-mini): configuration of the container runner gitea-runner
-# (Gitea's runner, formerly act_runner), mounted read-only as /config.yaml.
+# Apple Mac mini M4 Pro (hostname mac-mini): configuration of the container runner gitea-runner (Gitea's runner, formerly act_runner), mounted read-only as /config.yaml.
 # Every key is documented in `docker run --rm --entrypoint gitea-runner docker.gitea.com/runner:6.0.0 config generate`.
 # Changes take effect with: docker compose up -d --force-recreate gitea-runner
 
@@ -36,9 +35,8 @@ container:
   # The network must exist already: docker compose creates it.
   network: gitea-ci
   privileged: false
-  # At most 8 GiB of memory and 4096 processes per job container, so that a runaway job cannot starve Gitea,
-  # PostgreSQL and modCraft in OrbStack's VM. They do not cover `services:` containers or `docker://` steps,
-  # and a workflow's own --memory option overrides them.
+  # At most 8 GiB of memory and 4096 processes per job container, so that a runaway job cannot starve Gitea, PostgreSQL and modCraft in OrbStack's VM.
+  # They do not cover `services:` containers or `docker://` steps, and a workflow's own --memory option overrides them.
   options: --memory=8g --pids-limit=4096
   # Workflows may mount nothing from the host
   valid_volumes: []

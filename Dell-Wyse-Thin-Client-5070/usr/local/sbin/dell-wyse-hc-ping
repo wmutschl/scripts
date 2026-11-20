@@ -2,8 +2,7 @@
 # Dell Wyse 5070 (hostname dell-wyse): report a job's result to healthchecks.io.
 #
 #   dell-wyse-hc-ping NAME              success ping
-#   dell-wyse-hc-ping NAME fail [TEXT]  failure ping; TEXT, or else the last 40 log lines
-#                                        of NAME.service, appears in the alert
+#   dell-wyse-hc-ping NAME fail [TEXT]  failure ping; TEXT, or else the last 40 log lines of NAME.service, appears in the alert
 #
 # NAME becomes the check's slug, prefixed with dell-wyse- unless it already is.
 # The systemd units pass their own name (%N).

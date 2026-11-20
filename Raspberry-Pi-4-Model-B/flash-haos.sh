@@ -2,14 +2,13 @@
 # Raspberry Pi 4 Model B: write Home Assistant OS to an SD card on macOS, then read it back.
 #
 # Takes the image and its SHA-256 sums from the metadata that Raspberry Pi Imager uses
-# (version.home-assistant.io/rpi-imager-haos.json), checks the download and the
-# decompressed image, writes the card with dd and verifies what landed on it.
-# The first MiB (MBR and GPT) goes on last, so macOS sees no partitions, and mounts
-# none, until the rest of the card is verified.
+# (version.home-assistant.io/rpi-imager-haos.json), checks the download
+# and the decompressed image, writes the card with dd and verifies what landed on it.
+# The first MiB (MBR and GPT) goes on last, so macOS sees no partitions,
+# and mounts none, until the rest of the card is verified.
 #
 # Needs xz (brew install xz) and jq (part of macOS 15 and later).
 # Usage: ./flash-haos.sh diskN        # find diskN with: diskutil list external physical
-# Guide: https://mutschler.dev/linux/raspi-home-assistant-os/
 set -euo pipefail
 
 board=rpi4-64

@@ -1,20 +1,19 @@
 #!/bin/bash
-# Apple Mac mini M4 Pro (hostname mac-mini): restore Gitea from a run of mac-mini-gitea-backup
-# into a fresh installation: empty volumes, Gitea never started.
+# Apple Mac mini M4 Pro (hostname mac-mini): restore Gitea from a run of mac-mini-gitea-backup into a fresh installation: empty volumes, Gitea never started.
 #
 #   mac-mini-gitea-restore ~/Backups/gitea/gitea-YYYYMMDD-HHMMSS
 #
 # Loads gitea-db.pgdump with pg_restore, unpacks gitea-dump.tar into Gitea's two volumes,
 # starts Gitea and runs `gitea admin regenerate hooks` and `gitea doctor check --all`.
 # It refuses to touch a database with tables or volumes with app.ini or repositories in them,
-# so it never overwrites a running instance, and it refuses a .env whose GITEA_SECRET_KEY differs from the
-# backup's, because Gitea could not decrypt 2FA seeds and Actions secrets with another key.
+# so it never overwrites a running instance, and it refuses a .env whose GITEA_SECRET_KEY differs from the backup's,
+# because Gitea could not decrypt 2FA seeds and Actions secrets with another key.
 # To start over on purpose, remove the containers and the three volumes first:
 #   docker compose stop gitea-runner gitea gitea-db && docker compose rm -f gitea-runner gitea gitea-db
 #   docker volume rm gitea-db-data gitea-data gitea-config
-# Afterwards, start the container runner with `docker compose up -d gitea-runner`: it reconnects without a new
-# registration if its volume gitea-runner-data survived; otherwise register it again (GITEA_RUNNER_REGISTRATION_TOKEN)
-# and delete the old, offline runner in Gitea.
+# Afterwards, start the container runner with `docker compose up -d gitea-runner`:
+# it reconnects without a new registration if its volume gitea-runner-data survived;
+# otherwise register it again (GITEA_RUNNER_REGISTRATION_TOKEN) and delete the old, offline runner in Gitea.
 # The restored Gitea syncs its pull and push mirrors; push mirrors force-push the backup's state.
 # For a restore drill on another computer, turn mirroring off first with a docker-compose.override.yml
 # next to the compose file that sets GITEA__mirror__ENABLED: "false" for the gitea service.
